@@ -21,3 +21,13 @@ Never put backend secrets in VITE variables.
 ## Checks
 
 `npm run typecheck`, `npm run lint`, `npm run build`.
+
+## GitHub Actions
+
+The CI workflow runs on every push, on pull requests targeting `main`, and
+manually from the repository's Actions tab. It uses Node.js 22 and installs
+locked dependencies with `npm ci`. No production secrets are required.
+
+Checks: ESLint, TypeScript and the Vite production build. The `frontend-dist`
+artifact contains `dist/` and is kept for seven days. The build uses the default
+same-origin `/api` URL. This workflow does not deploy the website.
