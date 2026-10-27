@@ -30,4 +30,21 @@ locked dependencies with `npm ci`. No production secrets are required.
 
 Checks: ESLint, TypeScript and the Vite production build. The `frontend-dist`
 artifact contains `dist/` and is kept for seven days. The build uses the default
-same-origin `/api` URL. This workflow does not deploy the website.
+same-origin `/api` URL. After checks pass on `main`, the workflow deploys this artifact to EC2.
+
+## Automatic EC2 deployment
+
+Pushes to `main` deploy after CI succeeds. Pull requests only run checks.
+Manual runs on `main` also deploy. Runs on `main` are serialized so a newer
+push does not interrupt an active deployment.
+
+Repository variables: `EC2_HOST`, `EC2_USER`.
+Repository secrets: `EC2_SSH_KEY` (dedicated deployment key),
+`EC2_KNOWN_HOSTS` (verified server host keys). Production application secrets
+stay on EC2; do not add them to the frontend build.
+
+`deployment/deploy.sh` publishes the checked build to `/var/www/rtr`, replaces
+`index.html` atomically, keeps old hashed assets for existing tabs, and verifies
+the HTTPS response through local Nginx. A failed verification restores the
+previous index. The revision is recorded in `~/.cache/rtr-frontend-revision`.
+Old assets are retained and may be cleaned up during planned maintenance.
