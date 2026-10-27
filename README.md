@@ -38,10 +38,16 @@ Pushes to `main` deploy after CI succeeds. Pull requests only run checks.
 Manual runs on `main` also deploy. Runs on `main` are serialized so a newer
 push does not interrupt an active deployment.
 
-Repository variables: `EC2_HOST`, `EC2_USER`.
-Repository secrets: `EC2_SSH_KEY` (dedicated deployment key),
-`EC2_KNOWN_HOSTS` (verified server host keys). Production application secrets
-stay on EC2; do not add them to the frontend build.
+Checks run on GitHub-hosted Ubuntu runners. Only the deploy job runs on the
+repository's EC2 runner (`rtr-ec2-frontend`, label `rtr-production`), as user
+`ubuntu`. The runner is installed as a systemd service under
+`/home/ubuntu/actions-runner-frontend`. It connects outbound to GitHub over
+HTTPS; deployment does not require inbound SSH from GitHub or SSH secrets.
+Production application secrets stay on EC2. Do not move pull request jobs onto
+the production runner.
+
+If deployment stays queued, check the runner under repository Settings →
+Actions → Runners and inspect the `actions.runner.*` systemd service on EC2.
 
 `deployment/deploy.sh` publishes the checked build to `/var/www/rtr`, replaces
 `index.html` atomically, keeps old hashed assets for existing tabs, and verifies
