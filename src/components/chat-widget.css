@@ -11,7 +11,7 @@ div.rtr-ai-overlay[data-state="closed"] {
   inset: auto 0 0;
   width: 100%;
   max-width: none;
-  height: min(92dvh, var(--rtr-ai-viewport-height, 100dvh), 900px);
+  height: var(--rtr-ai-viewport-height, 100dvh);
   bottom: var(--rtr-ai-viewport-bottom, 0px);
   margin: 0;
   transform: none;
@@ -39,6 +39,91 @@ div.rtr-ai-panel[data-state="closed"] {
   div.rtr-ai-panel[data-state="closed"] {
     animation-name: rtr-ai-pop-out;
     animation-duration: 160ms;
+  }
+}
+/* Paint to the screen edges; keep controls within the iPhone safe area. */
+@media (max-width: 639px), (max-width: 1023px) and (hover: none) and (pointer: coarse) {
+  .rtr-ai-panel[role="dialog"] {
+    inset: auto 0 var(--rtr-ai-viewport-bottom, 0px);
+    width: 100%;
+    height: var(--rtr-ai-viewport-height, 100dvh);
+    border-radius: 0;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    background: #713a2e;
+    transform-origin: bottom center;
+  }
+  div.rtr-ai-panel[data-state="open"] {
+    animation-name: rtr-ai-sheet-in;
+  }
+  div.rtr-ai-panel[data-state="closed"] {
+    animation-name: rtr-ai-sheet-out;
+  }
+  .rtr-ai-panel .rtr-ai-header {
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 8px;
+  }
+  .rtr-ai-panel .rtr-ai-header-row {
+    gap: 8px;
+  }
+  .rtr-ai-panel .rtr-ai-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+  }
+  .rtr-ai-panel .rtr-ai-avatar svg {
+    width: 20px;
+    height: 20px;
+  }
+  .rtr-ai-panel .rtr-ai-header-action {
+    width: 44px;
+    height: 44px;
+  }
+  .rtr-ai-panel .rtr-ai-subtitle {
+    /* Keep the dialog description available to screen readers. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .rtr-ai-panel .rtr-ai-messages {
+    padding: 16px;
+    background: hsl(var(--background));
+  }
+  .rtr-ai-panel .rtr-ai-welcome {
+    padding-top: 8px;
+  }
+  .rtr-ai-panel .rtr-ai-welcome-icon {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 12px;
+  }
+  .rtr-ai-panel .rtr-ai-welcome-icon svg {
+    width: 22px;
+    height: 22px;
+  }
+  .rtr-ai-panel .rtr-ai-welcome h3 {
+    font-size: 18px;
+    line-height: 1.4;
+  }
+  .rtr-ai-panel .rtr-ai-welcome p {
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+  .rtr-ai-panel .rtr-ai-welcome > div:last-child {
+    margin-top: 16px;
+  }
+  .rtr-ai-panel .rtr-ai-footer {
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  .rtr-ai-panel[data-keyboard-open="true"] .rtr-ai-footer {
+    padding-bottom: 8px;
+  }
+  .rtr-ai-panel[data-keyboard-open="true"] .rtr-ai-footer > p:last-child {
+    display: none;
   }
 }
 .rtr-ai-launcher[data-state="open"] {

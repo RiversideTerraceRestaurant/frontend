@@ -83,6 +83,21 @@ export function ChatWidget() {
   const sequence = useRef(0);
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
+    if (!open) return;
+    const theme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    const previousTheme = theme?.content;
+    const mobile = window.matchMedia("(max-width: 639px), (max-width: 1023px) and (hover: none) and (pointer: coarse)");
+    const updateTheme = () => {
+      if (theme) theme.content = mobile.matches ? "#713a2e" : previousTheme ?? "";
+    };
+    updateTheme();
+    mobile.addEventListener("change", updateTheme);
+    return () => {
+      mobile.removeEventListener("change", updateTheme);
+      if (theme && previousTheme !== undefined) theme.content = previousTheme;
+    };
+  }, [open]);
+  useEffect(() => {
     if (!open || !window.visualViewport) return;
     const viewport = window.visualViewport;
     const update = () => {
@@ -94,6 +109,13 @@ export function ChatWidget() {
         "--rtr-ai-viewport-bottom",
         `${Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)}px`,
       );
+      panelRef.current?.setAttribute(
+        "data-keyboard-open",
+        String(window.innerHeight - viewport.height > 150),
+      );
+      if (panelRef.current?.contains(document.activeElement)) {
+        bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight });
+      }
     };
     const frame = requestAnimationFrame(update);
     viewport.addEventListener("resize", update);
@@ -230,24 +252,24 @@ export function ChatWidget() {
         ref={panelRef}
         onOpenAutoFocus={(event) => event.preventDefault()}
         overlayClassName="rtr-ai-overlay"
-        className="rtr-ai-panel flex flex-col gap-0 overflow-hidden rounded-t-3xl border-0 bg-background p-0 shadow-2xl sm:rounded-3xl [&>button]:hidden"
+        className="rtr-ai-panel flex flex-col gap-0 overflow-hidden rounded-none border-0 bg-background p-0 shadow-2xl sm:rounded-3xl [&>button]:hidden"
       >
-        <header className="shrink-0 bg-[#713a2e] px-5 pb-5 pt-6 text-white">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10">
+        <header className="rtr-ai-header shrink-0 bg-[#713a2e] px-5 pb-5 pt-6 text-white">
+          <div className="rtr-ai-header-row flex items-center gap-3">
+            <div className="rtr-ai-avatar flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10">
               <ChefHat className="h-6 w-6" />
             </div>
             <div className="min-w-0 flex-1">
               <DialogTitle className="text-lg font-semibold tracking-tight">
                 {t.title}
               </DialogTitle>
-              <DialogDescription className="mt-1 text-xs leading-relaxed text-white/75">
+              <DialogDescription className="rtr-ai-subtitle mt-1 text-xs leading-relaxed text-white/75">
                 {t.subtitle}
               </DialogDescription>
             </div>
             <button
               onClick={reset}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-white/10 focus-visible:outline focus-visible:outline-2"
+              className="rtr-ai-header-action flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-white/10 focus-visible:outline focus-visible:outline-2"
               aria-label={t.reset}
               title={t.reset}
             >
@@ -255,7 +277,7 @@ export function ChatWidget() {
             </button>
             <DialogClose asChild>
               <button
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-white/10 focus-visible:outline focus-visible:outline-2"
+                className="rtr-ai-header-action flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-white/10 focus-visible:outline focus-visible:outline-2"
                 aria-label={t.close}
               >
                 <X className="h-5 w-5" />
@@ -371,11 +393,11 @@ export function ChatWidget() {
         )}
         <div
           ref={bodyRef}
-          className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain bg-gradient-to-b from-muted/20 to-background px-4 py-5"
+          className="rtr-ai-messages min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain bg-gradient-to-b from-muted/20 to-background px-4 py-5"
         >
           {!messages.length && (
-            <div className="px-2 pb-1 pt-5 text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#f3e8df] text-[#713a2e]">
+            <div className="rtr-ai-welcome px-2 pb-1 pt-5 text-center">
+              <div className="rtr-ai-welcome-icon mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#f3e8df] text-[#713a2e]">
                 <Sparkles className="h-7 w-7" />
               </div>
               <h3 className="text-xl font-semibold tracking-tight">
@@ -387,7 +409,7 @@ export function ChatWidget() {
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 {quick.map((item) => (
                   <button
-                    key={item.action}
+                    key={item.label}
                     disabled={loading}
                     onClick={() => void send(item.label, item.action)}
                     className="flex min-h-11 items-center gap-1.5 rounded-full border bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:border-[#9a6150] hover:text-[#713a2e]"
@@ -499,7 +521,7 @@ export function ChatWidget() {
             </div>
           )}
         </div>
-        <footer className="shrink-0 border-t bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+        <footer className="rtr-ai-footer shrink-0 border-t bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
           {sent >= 20 ? (
             <p
               role="status"
