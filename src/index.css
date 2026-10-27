@@ -1,0 +1,295 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+html, body {
+  background: transparent !important;
+}
+
+.frost-panel {
+  position: relative;
+  background: rgba(255, 255, 255, 0.25);       /* nền đục nhẹ */
+  backdrop-filter: blur(10px);                 /* hiệu ứng kính mờ lạnh */
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 18px rgba(0, 0, 30, 0.15); /* bóng xanh đậm nhẹ */
+}
+.panel-item{
+  position: relative;
+  box-shadow: 0 4px 18px rgba(0, 0, 30, 0.15);
+  border-radius: 12px;
+  color: black;
+}
+/* viền băng xanh */
+.frost-panel > * {
+  position: relative;
+  z-index: 10;
+}
+.snowflake-fall img {
+  filter: brightness(0.7) contrast(4.5);
+}
+
+.frost-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid rgba(120, 180, 255, 0.7);  /* viền xanh lạnh */
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+          0 0 15px rgba(140, 200, 255, 0.7),
+          inset 0 0 12px rgba(180, 220, 255, 0.4);   /* ánh sáng băng */
+}
+
+/* hiệu ứng hạt frost nhẹ */
+.frost-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("https://res.cloudinary.com/dbp8ozwty/image/upload/v1765089685/gettyimages-1296478237-1024x1024_t0ejkc.jpg");
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+@keyframes bell-swing {
+  0%   { transform: rotate(0deg); }
+  15%  { transform: rotate(8deg); }
+  30%  { transform: rotate(-8deg); }
+  45%  { transform: rotate(6deg); }
+  60%  { transform: rotate(-6deg); }
+  75%  { transform: rotate(3deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.bell-swing {
+  animation: bell-swing 1.6s ease-in-out infinite;
+  transform-origin: top center;
+  will-change: transform;
+}
+
+@layer base {
+  :root {
+    /* Italian Restaurant Theme - Brown, Red, White */
+    --background: 0 0% 100%;
+    --foreground: 25 40% 20%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 25 40% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 25 40% 20%;
+
+    /* Rich red primary color */
+    --primary: 0 65% 48%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Warm brown secondary */
+    --secondary: 25 35% 35%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Light cream muted */
+    --muted: 30 25% 92%;
+    --muted-foreground: 25 30% 45%;
+
+    /* Deep brown accent */
+    --accent: 25 50% 30%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 30 15% 88%;
+    --input: 30 15% 88%;
+    --ring: 0 65% 48%;
+
+    --radius: 0.5rem;
+
+    /* Custom gradients */
+    --gradient-hero: linear-gradient(135deg, hsl(0 65% 48%), hsl(25 50% 30%));
+    --gradient-overlay: linear-gradient(180deg, rgba(0,0,0,0.4), rgba(0,0,0,0.1));
+    
+    /* Shadows */
+    --shadow-elegant: 0 10px 40px -10px hsl(0 65% 48% / 0.3);
+    --shadow-card: 0 4px 20px -2px hsl(25 40% 20% / 0.08);
+    --shadow-hover: 0 20px 60px -15px hsl(0 65% 48% / 0.35);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 24 45% 15%;
+    --sidebar-primary: 12 71% 65%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 43 44% 93%;
+    --sidebar-accent-foreground: 24 45% 15%;
+    --sidebar-border: 43 30% 88%;
+    --sidebar-ring: 12 71% 65%;
+  }
+
+  .dark {
+    --background: 25 40% 12%;
+    --foreground: 30 25% 95%;
+
+    --card: 25 35% 16%;
+    --card-foreground: 30 25% 95%;
+
+    --popover: 25 35% 16%;
+    --popover-foreground: 30 25% 95%;
+
+    --primary: 0 70% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 25 40% 25%;
+    --secondary-foreground: 30 25% 95%;
+
+    --muted: 25 30% 22%;
+    --muted-foreground: 30 20% 70%;
+
+    --accent: 25 50% 30%;
+    --accent-foreground: 30 25% 95%;
+
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 30 25% 95%;
+
+    --border: 25 30% 25%;
+    --input: 25 30% 25%;
+    --ring: 0 70% 55%;
+    
+    --sidebar-background: 24 40% 14%;
+    --sidebar-foreground: 42 47% 90%;
+    --sidebar-primary: 12 71% 65%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 24 35% 20%;
+    --sidebar-accent-foreground: 42 47% 90%;
+    --sidebar-border: 24 30% 25%;
+    --sidebar-ring: 12 71% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-weight: 600;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.6s ease-out;
+  }
+
+  .animate-slide-down {
+    animation: slideDown 0.4s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .glass-effect {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  /* Falling Snow Animation - Hexagonal Snowflakes */
+  .snowflake-fall {
+    animation: snowflake-fall linear infinite;
+    will-change: transform;
+  }
+
+  @keyframes snowflake-fall {
+    0% {
+      transform: translateY(-100px) rotate(0deg);
+    }
+    100% {
+      transform: translateY(100vh) rotate(360deg);
+    }
+  }
+
+  /* Additional shimmer effect for snowflakes */
+  .snowflake-fall img {
+    animation: shimmer 3s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+}
