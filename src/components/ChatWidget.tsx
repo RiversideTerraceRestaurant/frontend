@@ -40,6 +40,7 @@ interface Message extends ChatMessage {
   id: number;
   items?: ChatReply["items"];
   mode?: ChatReply["mode"];
+  filters?: ChatReply["appliedFilters"];
 }
 const defaults: Preferences = {
   diet: "any",
@@ -196,6 +197,7 @@ export function ChatWidget() {
           content: response.reply,
           items: response.items,
           mode: response.mode,
+          filters: response.appliedFilters,
         },
       ]);
       setSent((count) => count + 1);
@@ -220,6 +222,24 @@ export function ChatWidget() {
     setSent(0);
     setInput("");
     setLoading(false);
+  };
+  const filterLabels = (filters?: ChatReply["appliedFilters"]) => {
+    if (!filters) return [];
+    const diets = { vegetarian: t.vegetarian, vegan: t.vegan, gluten_free: t.gluten, dairy_free: t.dairy };
+    const alcohol = {
+      en: ["Alcohol-free drinks", "Alcoholic drinks"], vi: ["Đồ uống không cồn", "Đồ uống có cồn"],
+      ko: ["무알코올 음료", "주류"], ja: ["ノンアルコール", "アルコール飲料"],
+      cn: ["无酒精饮品", "含酒精饮品"], ru: ["Безалкогольные напитки", "Алкогольные напитки"],
+      kz: ["Алкогольсіз сусындар", "Алкогольді сусындар"], es: ["Sin alcohol", "Con alcohol"],
+      fr: ["Sans alcool", "Avec alcool"], it: ["Analcolici", "Alcolici"],
+    };
+    return [
+      ...filters.diets.map(diet => diets[diet]),
+      ...(filters.maxPrice !== null ? [`${t.budget}: ≤ ${filters.maxPrice.toLocaleString("vi-VN")} ₫`] : []),
+      ...(filters.mild ? [t.mild] : []),
+      ...(filters.avoid.length ? [`${t.avoid}: ${filters.avoid.join(", ")}`] : []),
+      ...(filters.alcohol !== "any" ? [alcohol[language][filters.alcohol === "none" ? 0 : 1]] : []),
+    ];
   };
   const quick = restaurant
     ? [
@@ -454,6 +474,15 @@ export function ChatWidget() {
                           ? `· ${t.unavailable}`
                           : ""}
                     </span>
+                  )}
+                  {message.role === "assistant" && filterLabels(message.filters).length > 0 && (
+                    <div aria-label={t.filters} className="mb-3 flex flex-wrap gap-1.5">
+                      {filterLabels(message.filters).map(label => (
+                        <span key={label} className="rounded-full border bg-muted/40 px-2.5 py-1 text-[11px] leading-4 text-muted-foreground">
+                          {label}
+                        </span>
+                      ))}
+                    </div>
                   )}
                   <p className="whitespace-pre-wrap break-words text-sm leading-6">
                     {message.content}
