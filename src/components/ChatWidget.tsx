@@ -49,7 +49,7 @@ const defaults: Preferences = {
 };
 
 export function ChatWidget() {
-  const { language } = useLanguage();
+  const { language, setLanguage } = useLanguage();
   const location = useLocation();
   const navigate = useNavigate();
   const restaurant = location.pathname !== "/menu";
@@ -81,6 +81,8 @@ export function ChatWidget() {
   const controller = useRef<AbortController | null>(null);
   const conversationId = useRef<string | undefined>(undefined);
   const sequence = useRef(0);
+  const languageRef = useRef(language);
+  languageRef.current = language;
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
     if (!open) return;
@@ -182,6 +184,10 @@ export function ChatWidget() {
       );
       if (requestController.signal.aborted) return;
       conversationId.current = response.conversationId;
+      // Respect a manual language selection made while this request was pending.
+      if (response.language && languageRef.current === language) {
+        setLanguage(response.language);
+      }
       setMessages((current) => [
         ...current,
         {

@@ -25,7 +25,7 @@ export interface Session { user: { id: string; email: string } | null; isAdmin: 
 export interface Preferences { diet: 'any' | 'vegetarian' | 'vegan' | 'gluten_free' | 'dairy_free'; maxPrice: number | null; mild: boolean; avoid: string[] }
 export type ChatAction = 'chat' | 'suggest' | 'popular' | 'vegetarian' | 'mild';
 export interface ChatMessage { role: 'user' | 'assistant'; content: string }
-export interface ChatReply { conversationId?: string; reply: string; items: (MenuItem & { price_with_vat: number })[]; mode: 'ai' | 'filters' | 'unavailable'; sources?: { id: string; title: string }[] }
+export interface ChatReply { language?: Language; conversationId?: string; reply: string; items: (MenuItem & { price_with_vat: number })[]; mode: 'ai' | 'filters' | 'unavailable'; sources?: { id: string; title: string }[] }
 export interface KnowledgeDocument { content: string; version: string }
 export interface MaintenanceJob { id: string; status: 'running' | 'complete' | 'failed'; current: number; total: number; updated: number; skipped: number; errors: string[] }
 export interface Analytics { totalViews: number; todayViews: number; trackingAvailable: boolean; topItems: { menu_item_id: string; name: string; view_count: number }[] }

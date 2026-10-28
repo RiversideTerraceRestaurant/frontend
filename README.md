@@ -54,3 +54,14 @@ Actions → Runners and inspect the `actions.runner.*` systemd service on EC2.
 the HTTPS response through local Nginx. A failed verification restores the
 previous index. The revision is recorded in `~/.cache/rtr-frontend-revision`.
 Old assets are retained and may be cleaned up during planned maintenance.
+
+## Chat language detection
+
+Free-text chat detects the language of the latest guest message during the
+existing intent request. Supported codes match the UI selector: `en`, `vi`,
+`ko`, `ja`, `cn`, `ru`, `kz`, `es`, `fr`, `it`. The detected language is used
+for the current answer and returned as `language` in the chat response. The
+widget updates the shared language context, including the selector and page
+copy. A manual selection made during an in-flight request takes precedence.
+Unsupported or ambiguous input retains the current language. No extra AI
+request is added, and changing language does not reset the conversation.

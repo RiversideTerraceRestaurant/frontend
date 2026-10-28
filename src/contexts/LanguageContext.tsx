@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 export type Language = "en" | "ko" | "ja" | "cn" | "vi" | "ru" | "kz" | "es" | "fr" | "it";
 
@@ -25,6 +25,9 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 export const LanguageProvider = ({ children }: { children: ReactNode }) => {
   const [language, setLanguage] = useState<Language>("en");
+  useEffect(() => {
+    document.documentElement.lang = language === "cn" ? "zh" : language === "kz" ? "kk" : language;
+  }, [language]);
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, languageLabels }}>
