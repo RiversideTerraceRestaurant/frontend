@@ -506,6 +506,8 @@ export default function Home() {
               An Hai Ward, Da Nang, Viet Nam
             </p>
             <a href="tel:+84911500440">(+84) 911 500 440</a>
+            <a href="mailto:litalianoriverside@gmail.com">litalianoriverside@gmail.com</a>
+            <span>{t.owner}: Mr. Darin</span>
             <a
               href="https://www.google.com/maps/search/?api=1&query=Riverside+Terrace+493+Tran+Hung+Dao+Da+Nang"
               target="_blank"
