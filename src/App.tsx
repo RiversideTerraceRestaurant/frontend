@@ -7,11 +7,15 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import Menu from "./pages/Menu";
 import Home from "./pages/Home";
 import Auth from "./pages/Auth";
-import Admin from "./pages/Admin";
 import { lazy, Suspense } from "react";
+import { AdminIndexRedirect } from "./pages/admin/AdminLayout";
 
-// Konva (table maps) is only needed on the booking page, so load it on demand.
+// Konva (table maps) is only needed on booking pages, so load them on demand.
 const Booking = lazy(() => import("./pages/Booking"));
+const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
+const AdminBookingPage = lazy(() => import("./pages/admin/AdminBookingPage"));
+const AdminMenuPage = lazy(() => import("./pages/admin/AdminMenuPage"));
+const pageFallback = <div className="min-h-screen" />;
 import NotFound from "./pages/NotFound";
 import { ChatWidget } from "@/components/ChatWidget";
 
@@ -30,7 +34,12 @@ const App = () => (
             <Route path="/menu" element={<Menu />} />
             <Route path="/booking" element={<Suspense fallback={<div className="min-h-screen" />}><Booking /></Suspense>} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/admin" element={<Admin />} />
+            <Route path="/admin" element={<AdminIndexRedirect />} />
+            <Route element={<Suspense fallback={pageFallback}><AdminLayout /></Suspense>}>
+              <Route path="/admin/booking" element={<Suspense fallback={pageFallback}><AdminBookingPage /></Suspense>} />
+              <Route path="/admin/booking/list" element={<Suspense fallback={pageFallback}><AdminBookingPage /></Suspense>} />
+              <Route path="/admin/menu" element={<Suspense fallback={pageFallback}><AdminMenuPage /></Suspense>} />
+            </Route>
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

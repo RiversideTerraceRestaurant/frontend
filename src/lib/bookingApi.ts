@@ -111,15 +111,4 @@ export const adminBookingApi = {
       note: booking.note,
     })).then(notifyBookingsChanged),
   tables: (area?: RestaurantArea) => request<RestaurantTable[]>(`/admin/tables${search(area ? { area } : {})}`),
-  createTable: (table: Omit<RestaurantTable, "id" | "floor" | "locationName"> & Partial<RestaurantTable>) =>
-    request<RestaurantTable>("/admin/tables", json("POST", tablePayload(table))),
-  updateTable: (table: RestaurantTable) => request<RestaurantTable>(`/admin/tables/${table.id}`, json("PATCH", tablePayload(table))),
-  updateTablePosition: (table: RestaurantTable) =>
-    request<RestaurantTable>(`/admin/tables/${table.id}/position`, json("PATCH", { x: table.x, y: table.y, width: table.width, height: table.height, rotation: table.rotation })),
-  deleteTable: (id: number) => request<{ ok: boolean }>(`/admin/tables/${id}`, json("DELETE")),
 };
-
-function tablePayload(table: Partial<RestaurantTable>) {
-  const { tableNumber, area, capacity, status, x, y, width, height, rotation, shape, imageUrl, areaImageUrl, description, active } = table;
-  return { tableNumber, area, capacity, status, x, y, width, height, rotation, shape, imageUrl: imageUrl || null, areaImageUrl: areaImageUrl || null, description: description || null, active: active ?? true };
-}

@@ -480,13 +480,6 @@ export default function Home() {
           </a>
         </div>
       </footer>
-      <div className="rtr-mobile-cta">
-        <span>{t.mobileCta}</span>
-        <Link to="/booking">
-          {booking("homeBook")}
-          <ArrowUpRight size={17} />
-        </Link>
-      </div>
     </div>
   );
 }

@@ -286,6 +286,8 @@ export function ChatWidget() {
         { label: t.notSpicy, action: "mild" as const },
         { label: t.popular, action: "popular" as const },
       ];
+  // The guest assistant has no place in the admin dashboard.
+  if (location.pathname.startsWith("/admin")) return null;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {createPortal(
@@ -294,9 +296,6 @@ export function ChatWidget() {
             className={cn(
               "rtr-ai-launcher fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-[49] h-12 gap-2 rounded-full border px-4 text-sm font-semibold shadow-xl shadow-[#713a2e]/30 sm:h-14 sm:px-5",
               "right-4 border-white/20 bg-gradient-to-r from-[#5e2f25] to-[#b5452f] text-white hover:brightness-110 sm:right-6",
-              location.pathname === "/home" && "rtr-home-assistant",
-              // Sit above the booking page's sticky "Continue" bar on phones.
-              location.pathname === "/booking" && "max-lg:bottom-[calc(5.25rem+env(safe-area-inset-bottom))]",
             )}
             aria-label={t.open}
           >

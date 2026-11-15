@@ -1,5 +1,5 @@
 import { Layer, Rect, Stage, Text } from "react-konva";
-import { AlertCircle, ArrowRight, CalendarCheck, CheckCircle2, ImageIcon, Loader2, RefreshCw, Sun, Home as HomeIcon, Shuffle } from "lucide-react";
+import { AlertCircle, CalendarCheck, CheckCircle2, ImageIcon, Loader2, RefreshCw, Sun, Home as HomeIcon, Shuffle } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -59,7 +59,6 @@ export default function Booking() {
   const [confirmationError, setConfirmationError] = useState(false);
   const [result, setResult] = useState<BookingResult | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-  const detailsRef = useRef<HTMLFormElement>(null);
   const tablesRequestIdRef = useRef(0);
   const pendingSuggestedIdsRef = useRef<number[] | null>(null);
   const [canvasContainerWidth, setCanvasContainerWidth] = useState(520);
@@ -404,7 +403,7 @@ export default function Booking() {
         </div>
       </section>
 
-      <div className="mx-auto w-full max-w-6xl px-4 pb-32 pt-5 sm:px-6 lg:pb-12">
+      <div className="mx-auto w-full max-w-6xl px-4 pb-24 pt-5 sm:px-6 lg:pb-12">
         <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
           <section className="min-w-0 rounded-3xl border border-[#eadcc8] bg-white p-3 shadow-sm sm:p-5" aria-labelledby="tables-heading">
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -522,7 +521,7 @@ export default function Booking() {
             </div>
           </section>
 
-          <form ref={detailsRef} onSubmit={submitBooking} className="min-w-0 scroll-mt-24 rounded-3xl border border-[#eadcc8] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="details-heading">
+          <form onSubmit={submitBooking} className="min-w-0 scroll-mt-24 rounded-3xl border border-[#eadcc8] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="details-heading">
             <h2 id="details-heading" className="mb-4 flex items-center gap-2 text-base font-semibold">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#713a2e] text-xs text-white">2</span>
               {t("bookingStepDetails")}
@@ -578,20 +577,6 @@ export default function Booking() {
           </form>
         </div>
       </div>
-
-      {selectedTables.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#eadcc8] bg-white/95 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_24px_rgba(60,30,20,0.08)] backdrop-blur lg:hidden">
-          <div className="mx-auto flex max-w-6xl items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{selectionLabel}</p>
-              <p className="truncate text-xs text-[#7a5a4c]">{form.bookingDate} · {form.startTime}–{form.endTime}</p>
-            </div>
-            <Button type="button" onClick={() => detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} className="h-11 shrink-0 rounded-full bg-[#c0392b] px-4 text-white hover:bg-[#a93226]">
-              {t("bookingContinueShort")}<ArrowRight className="ml-1.5 h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
 
       <Dialog open={showPhotos} onOpenChange={setShowPhotos}>
         <DialogContent className="max-w-3xl overflow-hidden">
