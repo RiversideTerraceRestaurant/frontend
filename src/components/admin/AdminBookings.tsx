@@ -1,453 +1,261 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Check, ChevronLeft, ChevronRight, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Inbox, Loader2, Phone, RefreshCw, Search, StickyNote, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { AREAS, BOOKING_STATUSES, adminBookingApi as adminApi } from "@/lib/bookingApi";
-import { Booking, BookingStatus, RestaurantArea, RestaurantTable } from "@/types/booking";
+import { AREAS, adminBookingApi } from "@/lib/bookingApi";
 import { useBookingRealtime } from "@/hooks/use-booking-realtime";
+import { addDays, restaurantNow } from "@/lib/bookingSlots";
+import type { Booking, RestaurantTable } from "@/types/booking";
+import { BookingDialog, StatusBadge } from "@/components/admin/BookingDialog";
+import { STATUS_STYLE, byTableNumber } from "@/features/time-map/timeMapUtils";
+import { cn } from "@/lib/utils";
 
-type BookingDraft = {
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  numberOfGuests: string;
-  bookingDate: string;
-  startTime: string;
-  endTime: string;
-  area: RestaurantArea;
-  status: BookingStatus;
-  note: string;
-};
+type StatusFilter = "PENDING" | "APPROVED" | "ALL" | "REJECTED" | "CANCELLED";
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: "PENDING", label: "Pending" },
+  { value: "APPROVED", label: "Confirmed" },
+  { value: "ALL", label: "All" },
+  { value: "REJECTED", label: "Rejected" },
+  { value: "CANCELLED", label: "Cancelled" },
+];
+const PAGE_SIZE = 12;
 
+/** Reservations inbox: filter, approve/reject in one tap, open a booking to edit it. */
 export function AdminBookings() {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalElements, setTotalElements] = useState(0);
-  const [filters, setFilters] = useState({ date: "", area: "", status: "", search: "", tableNumber: "" });
-  const [loading, setLoading] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [draft, setDraft] = useState<BookingDraft | null>(null);
-  const [adminTables, setAdminTables] = useState<RestaurantTable[]>([]);
-  const [selectedTableIds, setSelectedTableIds] = useState<number[]>([]);
-  const [saving, setSaving] = useState(false);
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const openedDeepLinkRef = useRef<string | null>(null);
+  const today = restaurantNow().date;
+  const [status, setStatus] = useState<StatusFilter>("PENDING");
+  const [date, setDate] = useState("");
+  const [area, setArea] = useState("");
+  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [result, setResult] = useState<{ content: Booking[]; totalElements: number; totalPages: number }>({ content: [], totalElements: 0, totalPages: 0 });
+  const [loading, setLoading] = useState(false);
+  const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [selected, setSelected] = useState<Booking | null>(null);
+  const [rejecting, setRejecting] = useState<Booking | null>(null);
+  const [reason, setReason] = useState("");
+  const [working, setWorking] = useState<number | null>(null);
+  const requestRef = useRef(0);
 
+  // Debounce typing in the search box.
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
-  }, []);
+    const timer = window.setTimeout(() => { setQuery(search.trim()); setPage(0); }, 350);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-  useEffect(() => {
-    const bookingId = searchParams.get("bookingId");
-    if (!bookingId || openedDeepLinkRef.current === bookingId) return;
-    openedDeepLinkRef.current = bookingId;
-    void adminApi.booking(Number(bookingId)).then(openBooking).catch((error) => {
-      toast({ title: "Cannot open booking", description: error instanceof Error ? error.message : "Booking not found.", variant: "destructive" });
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- react to deep links only
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (!draft?.area) return;
-    void loadAdminTables(draft.area);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload tables when the area changes
-  }, [draft?.area]);
-
-  const load = async (requestedPage = page) => {
+  const load = useCallback(async () => {
+    const request = ++requestRef.current;
     setLoading(true);
     try {
-      const result = await adminApi.bookingsPage({ ...filters, page: String(requestedPage), size: "10" });
-      setBookings(result.content);
-      setPage(result.page);
-      setTotalPages(result.totalPages);
-      setTotalElements(result.totalElements);
-    } catch (error) {
-      toast({ title: "Cannot load bookings", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useBookingRealtime(() => { void load(); });
-
-  const openBooking = (booking: Booking) => {
-    setSelectedBooking(booking);
-    setSelectedTableIds(booking.tables.map((table) => table.id));
-    setDraft({
-      customerName: booking.customerName,
-      customerEmail: booking.customerEmail,
-      customerPhone: booking.customerPhone,
-      numberOfGuests: String(booking.numberOfGuests),
-      bookingDate: booking.bookingDate,
-      startTime: booking.startTime,
-      endTime: booking.endTime,
-      area: booking.area,
-      status: booking.status,
-      note: booking.note || "",
-    });
-  };
-
-  const closeBooking = () => {
-    setSelectedBooking(null);
-    setDraft(null);
-    setAdminTables([]);
-    setSelectedTableIds([]);
-    if (searchParams.has("bookingId")) {
-      searchParams.delete("bookingId");
-      setSearchParams(searchParams, { replace: true });
-    }
-  };
-
-  const loadAdminTables = async (area: RestaurantArea) => {
-    try {
-      setAdminTables(await adminApi.tables(area));
-    } catch (error) {
-      toast({ title: "Cannot load tables", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
-    }
-  };
-
-  const refreshAfterAction = async (nextBooking?: Booking) => {
-    await load();
-    if (nextBooking) {
-      openBooking(nextBooking);
-    }
-  };
-
-  const action = async (type: "approve" | "reject" | "delete") => {
-    if (!selectedBooking) return;
-    try {
-      if (type === "approve") {
-        warnIfNeeded(await adminApi.approveBooking(selectedBooking.id));
-        closeBooking();
-        await load();
-        return;
-      }
-      if (type === "reject") {
-        const reason = window.prompt("Reject reason");
-        if (!reason) return;
-        const updated = await adminApi.rejectBooking(selectedBooking.id, reason);
-        warnIfNeeded(updated);
-        await refreshAfterAction(updated);
-        return;
-      }
-      if (type === "delete" && window.confirm("Cancel this booking? The guest will be emailed and it moves to the cancelled list.")) {
-        warnIfNeeded(await adminApi.deleteBooking(selectedBooking.id));
-        closeBooking();
-        await load();
-      }
-    } catch (error) {
-      toast({ title: "Action failed", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
-    }
-  };
-
-  const saveBooking = async () => {
-    if (!selectedBooking || !draft) return;
-    if (draft.endTime <= draft.startTime) {
-      toast({ title: "Cannot update booking", description: "End time must be after start time.", variant: "destructive" });
-      return;
-    }
-    const selectedTables = adminTables.filter((table) => selectedTableIds.includes(table.id));
-    if (selectedTables.length === 0) {
-      toast({ title: "Cannot update booking", description: "Please select at least one table.", variant: "destructive" });
-      return;
-    }
-    setSaving(true);
-    try {
-      const updated = await adminApi.updateBooking({
-        ...selectedBooking,
-        customerName: draft.customerName,
-        customerEmail: draft.customerEmail,
-        customerPhone: draft.customerPhone,
-        numberOfGuests: Number(draft.numberOfGuests),
-        bookingDate: draft.bookingDate,
-        startTime: draft.startTime,
-        endTime: draft.endTime,
-        area: draft.area,
-        status: draft.status,
-        note: draft.note,
-        tables: selectedTables,
+      const data = await adminBookingApi.bookingsPage({
+        status: status === "ALL" ? "" : status, date, area, search: query, page: String(page), size: String(PAGE_SIZE),
       });
-      toast({ title: "Booking updated", description: updated.bookingCode });
-      warnIfNeeded(updated);
-      await refreshAfterAction(updated);
+      if (request === requestRef.current) setResult(data);
     } catch (error) {
-      toast({ title: "Update failed", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+      if (request === requestRef.current) toast({ title: "Cannot load bookings", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
     } finally {
-      setSaving(false);
+      if (request === requestRef.current) setLoading(false);
+    }
+  }, [status, date, area, query, page, toast]);
+  useEffect(() => { void load(); }, [load]);
+  useBookingRealtime(() => { void load(); });
+  useEffect(() => { void adminBookingApi.tables().then(setTables).catch(() => undefined); }, []);
+
+  // Deep links from emails / push notifications: ?bookingId=123
+  useEffect(() => {
+    const id = Number(searchParams.get("bookingId"));
+    if (!id) return;
+    adminBookingApi.booking(id).then(setSelected).catch((error) => toast({ title: "Cannot open booking", description: error instanceof Error ? error.message : "Booking not found.", variant: "destructive" }));
+  }, [searchParams, toast]);
+  const closeSelected = () => {
+    setSelected(null);
+    if (searchParams.has("bookingId")) { searchParams.delete("bookingId"); setSearchParams(searchParams, { replace: true }); }
+  };
+
+  const approve = async (booking: Booking) => {
+    setWorking(booking.id);
+    try {
+      const updated = await adminBookingApi.approveBooking(booking.id);
+      toast({ title: "Booking approved", description: `${updated.customerName} · ${updated.bookingDate} ${updated.startTime}` });
+      if (updated.warning) toast({ title: "Email not sent", description: updated.warning, variant: "destructive" });
+      await load();
+    } catch (error) {
+      toast({ title: "Cannot approve", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setWorking(null);
+    }
+  };
+  const reject = async () => {
+    if (!rejecting || !reason.trim()) return;
+    setWorking(rejecting.id);
+    try {
+      const updated = await adminBookingApi.rejectBooking(rejecting.id, reason.trim());
+      toast({ title: "Booking rejected", description: updated.customerName });
+      if (updated.warning) toast({ title: "Email not sent", description: updated.warning, variant: "destructive" });
+      setRejecting(null);
+      setReason("");
+      await load();
+    } catch (error) {
+      toast({ title: "Cannot reject", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally {
+      setWorking(null);
     }
   };
 
-  const warnIfNeeded = (booking: Booking) => {
-    if (booking.warning) toast({ title: "Email not sent", description: booking.warning, variant: "destructive" });
-  };
-
-  const toggleAdminTable = (tableId: number) => {
-    setSelectedTableIds((ids) => (ids.includes(tableId) ? ids.filter((id) => id !== tableId) : [...ids, tableId]));
-  };
+  const dateChips = [
+    { value: "", label: "All dates" },
+    { value: today, label: "Today" },
+    { value: addDays(today, 1), label: "Tomorrow" },
+  ];
+  const customDate = date && !dateChips.some((chip) => chip.value === date);
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold">Bookings</h2>
-          <p className="text-sm text-muted-foreground">Tap a booking to review details and manage its status.</p>
+          <h2 className="text-xl font-semibold text-[#2b1d17]">Reservations</h2>
+          <p className="text-sm text-[#7a5a4c]">{result.totalElements} {status === "ALL" ? "" : STATUS_FILTERS.find((item) => item.value === status)?.label.toLowerCase()} booking(s){date ? ` on ${date}` : ""}</p>
         </div>
-        <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void load(page)}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Reload
+        <Button variant="outline" size="sm" className="rounded-full" disabled={loading} onClick={() => void load()}>
+          <RefreshCw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} />Refresh
         </Button>
       </div>
-      <div className="grid gap-3 rounded-xl border bg-card p-3 sm:p-4 md:grid-cols-5">
-        <Input type="date" value={filters.date} onChange={(event) => setFilters({ ...filters, date: event.target.value })} />
-        <Select value={filters.area || "ALL"} onValueChange={(value) => setFilters({ ...filters, area: value === "ALL" ? "" : (value as RestaurantArea) })}>
-          <SelectTrigger><SelectValue placeholder="Area" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All areas</SelectItem>
-            {AREAS.map((area) => <SelectItem key={area.value} value={area.value}>{area.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={filters.status || "ALL"} onValueChange={(value) => setFilters({ ...filters, status: value === "ALL" ? "" : (value as BookingStatus) })}>
-          <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All statuses</SelectItem>
-            {BOOKING_STATUSES.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Input placeholder="Table" value={filters.tableNumber} onChange={(event) => setFilters({ ...filters, tableNumber: event.target.value })} />
-        <div className="flex gap-2">
-          <Input placeholder="Name, email, phone" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
-          <Button type="button" onClick={() => { setPage(0); void load(0); }}><Search className="h-4 w-4" /></Button>
+
+      {/* Filters */}
+      <div className="space-y-3 rounded-3xl border border-[#eadcc8] bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+          {STATUS_FILTERS.map((item) => (
+            <button key={item.value} onClick={() => { setStatus(item.value); setPage(0); }}
+              className={cn("h-9 shrink-0 rounded-full px-4 text-sm font-semibold transition", status === item.value ? "bg-[#713a2e] text-white" : "bg-[#f3e8dc] text-[#5b3a2e] hover:bg-[#ead8c6]")}>
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+          <label className="flex h-10 items-center gap-2 rounded-xl border border-[#eadcc8] bg-[#fdf9f3] px-3">
+            <Search className="h-4 w-4 text-[#9a7b6c]" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, email or phone" className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+          </label>
+          <div className="flex gap-1.5 overflow-x-auto">
+            {dateChips.map((chip) => (
+              <button key={chip.label} onClick={() => { setDate(chip.value); setPage(0); }}
+                className={cn("h-10 shrink-0 rounded-xl px-3 text-sm font-medium", date === chip.value ? "bg-[#2b1d17] text-white" : "border border-[#eadcc8] bg-white text-[#5b3a2e]")}>
+                {chip.label}
+              </button>
+            ))}
+            <label className={cn("relative flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-sm font-medium", customDate ? "bg-[#2b1d17] text-white" : "border border-[#eadcc8] bg-white text-[#5b3a2e]")}>
+              <CalendarDays className="h-4 w-4" />{customDate ? date : "Pick"}
+              <input type="date" value={date} onChange={(event) => { setDate(event.target.value); setPage(0); }} className="absolute inset-0 cursor-pointer opacity-0" aria-label="Pick a date" />
+            </label>
+          </div>
+          <select value={area} onChange={(event) => { setArea(event.target.value); setPage(0); }} className="h-10 rounded-xl border border-[#eadcc8] bg-white px-3 text-sm">
+            <option value="">All areas</option>
+            {AREAS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </select>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3">
-        <p className="text-sm text-muted-foreground">{totalElements} bookings · Page {totalPages === 0 ? 0 : page + 1} of {totalPages}</p>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" disabled={loading || page === 0} onClick={() => void load(page - 1)}><ChevronLeft className="mr-1 h-4 w-4" />Previous</Button>
-          <Button variant="outline" size="sm" disabled={loading || page + 1 >= totalPages} onClick={() => void load(page + 1)}>Next<ChevronRight className="ml-1 h-4 w-4" /></Button>
-        </div>
-      </div>
-
-      <div className="grid w-full max-w-full gap-3">
-        {bookings.map((booking) => (
-          <button
-            key={booking.id}
-            type="button"
-            onClick={() => openBooking(booking)}
-            className={`w-full max-w-full overflow-hidden rounded-md border p-4 text-left shadow-sm transition hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary ${
-              booking.status === "PENDING"
-                ? "border-red-300 bg-red-50"
-                : booking.status === "APPROVED"
-                  ? "border-border bg-card"
-                  : "border-border bg-muted/40"
-            }`}
-          >
-            <div className="flex min-w-0 items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{booking.bookingCode}</p>
-                <p className="mt-1 truncate text-base font-medium">{booking.customerName}</p>
-                <p className="truncate text-sm text-muted-foreground">{booking.customerEmail}</p>
-              </div>
-              <Badge variant={booking.status === "REJECTED" ? "destructive" : "default"} className="shrink-0">
-                {booking.status}
-              </Badge>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-              <SummaryItem label="Area" value={booking.area} />
-              <SummaryItem label="Table" value={booking.tables.map((table) => table.tableNumber).join(", ")} />
-              <SummaryItem label="Date" value={booking.bookingDate} />
-              <SummaryItem label="Time" value={`${booking.startTime} - ${booking.endTime}`} />
-            </div>
-          </button>
-        ))}
-        {!loading && bookings.length === 0 && <p className="rounded-md border bg-card p-6 text-center text-muted-foreground">No bookings found.</p>}
-        {loading && <p className="rounded-md border bg-card p-6 text-center text-muted-foreground">Loading bookings...</p>}
-      </div>
-
-      <Dialog open={Boolean(selectedBooking)} onOpenChange={(open) => !open && closeBooking()}>
-        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-3xl touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain rounded-2xl p-4 sm:p-6">
-          <DialogHeader>
-            <DialogTitle>{selectedBooking?.bookingCode}</DialogTitle>
-            <DialogDescription>Review booking details before approving, rejecting, updating or cancelling.</DialogDescription>
-          </DialogHeader>
-
-          {selectedBooking && draft && (
-            <div className="min-w-0 space-y-5">
-              <div className={`rounded-md border p-4 ${selectedBooking.status === "PENDING" ? "border-red-300 bg-red-50" : "bg-card"}`}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="font-semibold">{selectedBooking.customerName}</p>
-                    <p className="break-all text-sm text-muted-foreground sm:break-normal">{selectedBooking.customerEmail} · {selectedBooking.customerPhone}</p>
+      {/* List */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {result.content.map((booking) => {
+          const style = STATUS_STYLE[booking.status];
+          const phone = booking.customerPhone !== "0000000000" ? booking.customerPhone : "";
+          return (
+            <article key={booking.id} className="relative overflow-hidden rounded-3xl border border-[#eadcc8] bg-white shadow-sm">
+              <span className="absolute inset-y-0 left-0 w-1.5" style={{ background: style.border }} aria-hidden="true" />
+              <button onClick={() => setSelected(booking)} className="block w-full p-4 pl-5 text-left">
+                <div className="flex items-start gap-3">
+                  <div className="w-16 shrink-0 rounded-2xl bg-[#fdf9f3] py-2 text-center">
+                    <p className="text-[11px] font-semibold uppercase text-[#b5452f]">{new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" }).format(new Date(`${booking.bookingDate}T00:00:00Z`))}</p>
+                    <p className="text-sm font-bold text-[#2b1d17]">{booking.bookingDate.slice(8, 10)}/{booking.bookingDate.slice(5, 7)}</p>
+                    <p className="text-xs font-semibold text-[#5b3a2e]">{booking.startTime}</p>
                   </div>
-                  <Badge variant={selectedBooking.status === "REJECTED" ? "destructive" : "default"}>{selectedBooking.status}</Badge>
-                </div>
-                <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-                  <SummaryItem label="Tables" value={selectedBooking.tables.map((table) => table.tableNumber).join(", ")} />
-                  <SummaryItem label="Guests" value={String(selectedBooking.numberOfGuests)} />
-                  <SummaryItem label="Created" value={new Date(selectedBooking.createdAt).toLocaleString()} />
-                </div>
-              </div>
-
-              <BookingMiniMap booking={selectedBooking} tables={adminTables} />
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <EditableField label="Customer name" value={draft.customerName} onChange={(value) => setDraft({ ...draft, customerName: value })} />
-                <EditableField label="Email" type="email" value={draft.customerEmail} onChange={(value) => setDraft({ ...draft, customerEmail: value })} />
-                <EditableField label="Phone" value={draft.customerPhone} onChange={(value) => setDraft({ ...draft, customerPhone: value })} />
-                <EditableField label="Guests" type="number" value={draft.numberOfGuests} onChange={(value) => setDraft({ ...draft, numberOfGuests: value })} />
-                <EditableField label="Date" type="date" value={draft.bookingDate} onChange={(value) => setDraft({ ...draft, bookingDate: value })} />
-                <div className="grid grid-cols-2 gap-3">
-                  <EditableField label="Start" type="time" value={draft.startTime} onChange={(value) => setDraft({ ...draft, startTime: value })} />
-                  <EditableField label="End" type="time" value={draft.endTime} onChange={(value) => setDraft({ ...draft, endTime: value })} />
-                </div>
-                <div>
-                  <Label>Area</Label>
-                  <Select value={draft.area} onValueChange={(value) => {
-                    setDraft({ ...draft, area: value as RestaurantArea });
-                    setSelectedTableIds([]);
-                  }}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {AREAS.map((area) => <SelectItem key={area.value} value={area.value}>{area.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Status</Label>
-                  <Select value={draft.status} onValueChange={(value) => setDraft({ ...draft, status: value as BookingStatus })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {BOOKING_STATUSES.map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="sm:col-span-2">
-                  <Label htmlFor="booking-note">Note</Label>
-                  <Textarea className="text-base sm:text-sm" id="booking-note" value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} />
-                </div>
-                <div className="sm:col-span-2">
-                  <Label>Tables</Label>
-                  <div className="mt-2 grid max-h-56 gap-2 overflow-y-auto rounded-md border bg-muted/20 p-2 sm:grid-cols-2">
-                    {adminTables.map((table) => {
-                      const checked = selectedTableIds.includes(table.id);
-                      return (
-                        <button
-                          key={table.id}
-                          type="button"
-                          onClick={() => toggleAdminTable(table.id)}
-                          className={`rounded-md border p-3 text-left transition ${
-                            checked ? "border-blue-600 bg-blue-50" : "border-border bg-card hover:border-primary"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="truncate font-semibold">{table.tableNumber}</p>
-                              <p className="text-sm text-muted-foreground">{table.capacity} seats · {table.status}</p>
-                            </div>
-                            <span className={`mt-1 h-4 w-4 shrink-0 rounded-full border ${checked ? "border-blue-600 bg-blue-600" : "border-muted-foreground"}`} />
-                          </div>
-                        </button>
-                      );
-                    })}
-                    {adminTables.length === 0 && <p className="p-3 text-sm text-muted-foreground">No tables found for this area.</p>}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start gap-2">
+                      <p className="min-w-0 flex-1 truncate font-semibold text-[#2b1d17]">{booking.customerName}</p>
+                      <StatusBadge status={booking.status} className="shrink-0 text-[10px]" />
+                    </div>
+                    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[#7a5a4c]">
+                      <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" />{booking.numberOfGuests}</span>
+                      <span>{AREAS.find((item) => item.value === booking.area)?.label} · {[...booking.tables].sort(byTableNumber).map((table) => table.tableNumber).join(", ")}</span>
+                      <span>{booking.startTime}–{booking.endTime}</span>
+                      {phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{phone}</span>}
+                    </p>
+                    {booking.note && <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900"><StickyNote className="mt-0.5 h-3 w-3 shrink-0" />{booking.note}</p>}
+                    <p className="mt-1.5 text-[10px] text-[#b39b8c]">{booking.bookingCode} · requested {new Date(booking.createdAt).toLocaleString("en-GB")}</p>
                   </div>
                 </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2 border-t pt-4">
-                <Button onClick={saveBooking} disabled={saving}>
-                  <Save className="mr-2 h-4 w-4" />
-                  Update
-                </Button>
-                {selectedBooking.status === "PENDING" && (
-                  <>
-                    <Button onClick={() => action("approve")}>
-                      <Check className="mr-2 h-4 w-4" />
-                      Approve
-                    </Button>
-                    <Button variant="outline" onClick={() => action("reject")}>
-                      <X className="mr-2 h-4 w-4" />
-                      Reject
-                    </Button>
-                  </>
-                )}
-                <Button variant="outline" onClick={closeBooking}>
-                  Close
-                </Button>
-                {selectedBooking.status !== "CANCELLED" && (
-                  <Button variant="destructive" onClick={() => action("delete")}>
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Cancel booking
+              </button>
+              {booking.status === "PENDING" && (
+                <div className="flex gap-2 border-t border-[#f3e8dc] bg-[#fffcf7] px-4 py-2.5 pl-5">
+                  <Button size="sm" className="h-9 flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-700" disabled={working === booking.id} onClick={() => void approve(booking)}>
+                    {working === booking.id ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Check className="mr-1.5 h-4 w-4" />}Approve
                   </Button>
-                )}
-              </div>
-            </div>
-          )}
+                  <Button size="sm" variant="outline" className="h-9 flex-1 rounded-xl border-red-200 text-red-700 hover:bg-red-50" disabled={working === booking.id} onClick={() => { setRejecting(booking); setReason(""); }}>
+                    <X className="mr-1.5 h-4 w-4" />Reject
+                  </Button>
+                </div>
+              )}
+            </article>
+          );
+        })}
+        {!loading && result.content.length === 0 && (
+          <div className="flex flex-col items-center gap-2 rounded-3xl border border-dashed border-[#e2cdb4] bg-white/60 p-10 text-center text-[#7a5a4c] lg:col-span-2">
+            <Inbox className="h-8 w-8" />
+            <p className="font-medium">{status === "PENDING" ? "No requests waiting for approval." : "No bookings match these filters."}</p>
+          </div>
+        )}
+        {loading && result.content.length === 0 && <div className="flex justify-center p-10 lg:col-span-2"><Loader2 className="h-6 w-6 animate-spin text-[#713a2e]" /></div>}
+      </div>
+
+      {result.totalPages > 1 && (
+        <div className="flex items-center justify-between rounded-2xl border border-[#eadcc8] bg-white px-4 py-2.5 text-sm">
+          <span className="text-[#7a5a4c]">Page {page + 1} of {result.totalPages}</span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={loading || page === 0} onClick={() => setPage(page - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" disabled={loading || page + 1 >= result.totalPages} onClick={() => setPage(page + 1)}><ChevronRight className="h-4 w-4" /></Button>
+          </div>
+        </div>
+      )}
+
+      <BookingDialog
+        open={Boolean(selected)}
+        onOpenChange={(open) => !open && closeSelected()}
+        booking={selected}
+        tables={tables}
+        onChanged={() => void load()}
+      />
+
+      <Dialog open={Boolean(rejecting)} onOpenChange={(open) => !open && setRejecting(null)}>
+        <DialogContent className="rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Reject {rejecting?.customerName}'s request?</DialogTitle>
+            <DialogDescription>The guest receives this reason by email.</DialogDescription>
+          </DialogHeader>
+          <Label htmlFor="reject-reason" className="sr-only">Reason</Label>
+          <Textarea id="reject-reason" autoFocus rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. We are fully booked at this time. Please choose another slot." />
+          <div className="flex flex-wrap gap-2">
+            {["We are fully booked at this time.", "The restaurant is closed for a private event.", "Please call us to arrange a larger group."].map((text) => (
+              <button key={text} onClick={() => setReason(text)} className="rounded-full bg-[#f3e8dc] px-3 py-1 text-xs text-[#5b3a2e] hover:bg-[#ead8c6]">{text}</button>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setRejecting(null)}>Back</Button>
+            <Button variant="destructive" disabled={!reason.trim() || working !== null} onClick={() => void reject()}>
+              {working !== null && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Reject booking
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
 
-function BookingMiniMap({ booking, tables }: { booking: Booking; tables: RestaurantTable[] }) {
-  const selected = new Set(booking.tables.map((table) => table.id));
-  if (tables.length === 0) return <div className="rounded-md border bg-muted/20 p-4 text-sm text-muted-foreground">Loading time map…</div>;
-  const maxX = Math.max(...tables.map((table) => table.x + table.width), 1);
-  const maxY = Math.max(...tables.map((table) => table.y + table.height), 1);
-  return (
-    <div className="min-w-0 max-w-full overflow-hidden rounded-xl border bg-slate-50 p-3">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div><p className="font-semibold">Booking time map</p><p className="text-sm text-muted-foreground">{booking.bookingDate} · {booking.startTime}–{booking.endTime} · {booking.area}</p></div>
-        <p className="text-sm font-medium text-blue-700">Highlighted: {booking.tables.map((table) => table.tableNumber).join(", ")}</p>
-      </div>
-      <div className="relative h-60 w-full max-w-full overflow-hidden rounded-lg border bg-card sm:aspect-[16/9] sm:h-auto sm:min-h-52">
-        {tables.map((table) => {
-          const active = selected.has(table.id);
-          const width = Math.min(18, Math.max(8, (table.width / maxX) * 86));
-          const height = Math.min(25, Math.max(12, (table.height / maxY) * 80));
-          const left = Math.min(98 - width, Math.max(2, (table.x / maxX) * (94 - width) + 2));
-          const top = Math.min(98 - height, Math.max(2, (table.y / maxY) * (94 - height) + 2));
-          return <div key={table.id} className={`absolute flex items-center justify-center rounded-md border-2 text-[11px] font-bold shadow-sm ${active ? "z-10 border-blue-700 bg-blue-600 text-white ring-2 ring-blue-200 sm:ring-4" : "border-slate-300 bg-slate-100 text-slate-600"}`} style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`, transform: `rotate(${table.rotation || 0}deg)` }}>{table.tableNumber}</div>;
-        })}
-      </div>
-    </div>
-  );
-}
-
-function SummaryItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-      <p className="truncate font-medium">{value || "-"}</p>
-    </div>
-  );
-}
-
-function EditableField({
-  label,
-  value,
-  onChange,
-  type = "text",
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-}) {
-  return (
-    <div>
-      <Label>{label}</Label>
-      <Input className="text-base sm:text-sm" type={type} value={value} onChange={(event) => onChange(event.target.value)} />
-    </div>
-  );
-}

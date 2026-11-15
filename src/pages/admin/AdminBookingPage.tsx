@@ -2,12 +2,11 @@ import { lazy, Suspense } from "react";
 import { NavLink, useLocation, useOutletContext } from "react-router-dom";
 import { Clock3, ListChecks } from "lucide-react";
 import { AdminBookings } from "@/components/admin/AdminBookings";
-import { AuthProvider as TimeMapAuthProvider } from "@/features/time-map/hooks/use-auth";
 import type { AdminOutletContext } from "@/pages/admin/AdminLayout";
 import { cn } from "@/lib/utils";
 
-// Konva and html2canvas are heavy; load the time map on demand.
-const TimeMap = lazy(() => import("@/features/time-map/pages/Index"));
+// Load the time map on demand.
+const TimeMap = lazy(() => import("@/features/time-map/TimeMap"));
 
 /** /admin/booking (time map, default) and /admin/booking/list (reservation inbox). */
 export default function AdminBookingPage() {
@@ -43,11 +42,9 @@ export default function AdminBookingPage() {
         <main className="mx-auto w-full max-w-7xl px-3 py-5 sm:px-6"><AdminBookings /></main>
       ) : (
         <main className="min-h-0 flex-1 overflow-hidden">
-          <TimeMapAuthProvider isAdmin>
-            <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading time map…</div>}>
-              <TimeMap embedded />
-            </Suspense>
-          </TimeMapAuthProvider>
+          <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading time map…</div>}>
+            <TimeMap />
+          </Suspense>
         </main>
       )}
     </div>

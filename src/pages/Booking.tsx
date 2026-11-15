@@ -143,7 +143,7 @@ export default function Booking() {
     setSelectedTableIds([]);
     void loadTables({ clear: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when the search inputs change
-  }, [area, form.bookingDate, form.startTime, form.endTime, form.numberOfGuests]);
+  }, [area, form.bookingDate, form.startTime, form.endTime]);
 
   useEffect(() => {
     const element = canvasContainerRef.current;
@@ -251,39 +251,47 @@ export default function Booking() {
     if (selectedTables.some((table) => table.status !== "AVAILABLE")) return t("bookingUnavailableSelected");
     if (selectedTables.some((table) => table.area !== area)) return t("bookingWrongAreaSelected");
     if (selectedCapacity < guestCount) return t("bookingCapacityTooSmall");
+    if (area === "VERONA" && guestCount < 3) return t("bookingVeronaMinimum");
     return "";
   };
 
+  // Konva can report one touch as both "tap" and "click"; count it once.
+  const lastToggleRef = useRef({ id: 0, at: 0 });
   const toggleTable = (table: RestaurantTable) => {
+    const now = Date.now();
+    if (lastToggleRef.current.id === table.id && now - lastToggleRef.current.at < 450) return;
+    lastToggleRef.current = { id: table.id, at: now };
     if (table.status !== "AVAILABLE") return;
     const warn = (description: string) => toast({ title: t("bookingFormIncomplete"), description, variant: "destructive" });
-    if (area === "VERONA" && guestCount < 3) {
-      toast({ title: t("bookingVeronaLocked"), description: t("bookingVeronaMinimum"), variant: "destructive" });
-      return;
-    }
+    const numbersOf = (list: RestaurantTable[]) => list.map((item) => Number(item.tableNumber.replace(/\D/g, ""))).sort((a, b) => a - b);
+    const adjacent = (numbers: number[]) => numbers.every((number, index) => index === 0 || number === numbers[index - 1] + 1);
+    const apply = (next: RestaurantTable[]) => {
+      setSelectedTableIds(next.map((item) => item.id));
+      // Seat as many guests as the chosen tables hold (max 6 online); keep a smaller party on one table.
+      const capacity = next.reduce((total, item) => total + item.capacity, 0);
+      if (next.length && (next.length > 1 || guestCount > capacity)) {
+        setForm((current) => ({ ...current, numberOfGuests: String(Math.min(capacity, MAX_ONLINE_GUESTS)) }));
+      }
+    };
+
     if (selectedTableIds.includes(table.id)) {
       const remaining = selectedTables.filter((item) => item.id !== table.id);
-      const numbers = remaining.map((item) => Number(item.tableNumber.replace(/\D/g, ""))).sort((a, b) => a - b);
-      if (!numbers.every((number, index) => index === 0 || number === numbers[index - 1] + 1)) return warn(t("bookingRemoveFromEnd"));
-      setSelectedTableIds(remaining.map((item) => item.id));
-      return;
-    }
-    // Parties of 1-2 take one table: tapping another one moves the selection.
-    if (guestCount <= 2) {
-      setSelectedTableIds([table.id]);
+      if (!adjacent(numbersOf(remaining))) return warn(t("bookingRemoveFromEnd"));
+      apply(remaining);
       return;
     }
     const nextTables = [...selectedTables, table];
+    const numbers = numbersOf(nextTables);
+    // Tapping a table away from the current group starts a new selection.
+    if (!adjacent(numbers)) return apply([table]);
     if (nextTables.length > 3) return warn(t("bookingMaxTables"));
     if (nextTables.reduce((total, item) => total + item.capacity, 0) > 6) return warn(t("bookingMaxCapacity"));
-    const numbers = nextTables.map((item) => Number(item.tableNumber.replace(/\D/g, ""))).sort((a, b) => a - b);
-    if (!numbers.every((number, index) => index === 0 || number === numbers[index - 1] + 1)) return warn(t("bookingAdjacentOnly"));
     if (area === "TERRACE" && numbers.includes(6) && numbers.includes(7)) return warn(t("bookingNoJoinT6T7"));
     if (area === "VERONA" && numbers.some((number) => number >= 11)) {
       const fixedPairs = [[11, 12], [13, 14], [15, 16]];
       if (!fixedPairs.some((pair) => numbers.every((number) => pair.includes(number))) || nextTables.length > 2) return warn(t("bookingVeronaPairs"));
     }
-    setSelectedTableIds(nextTables.map((item) => item.id));
+    apply(nextTables);
   };
 
   const submitBooking = async (event: FormEvent) => {
@@ -446,7 +454,7 @@ export default function Booking() {
                     <Rect preventDefault={false} x={0} y={0} width={canvasWidth} height={canvasHeight} fill="#fdf9f3" />
                     {canvasTables.map((table) => {
                       const selected = selectedTableIds.includes(table.id);
-                      const disabled = table.status !== "AVAILABLE" || (area === "VERONA" && guestCount < 3);
+                      const disabled = table.status !== "AVAILABLE";
                       const { x, y } = getTablePosition(table);
                       return (
                         <Rect
@@ -470,7 +478,7 @@ export default function Booking() {
                       );
                     })}
                     {canvasTables.map((table) => {
-                      const disabled = table.status !== "AVAILABLE" || (area === "VERONA" && guestCount < 3);
+                      const disabled = table.status !== "AVAILABLE";
                       const { x, y } = getTablePosition(table);
                       return (
                         <Text

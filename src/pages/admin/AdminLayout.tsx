@@ -6,6 +6,7 @@ import { adminBookingApi } from "@/lib/bookingApi";
 import { useBookingRealtime } from "@/hooks/use-booking-realtime";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { PushToggle } from "@/components/admin/PushToggle";
 
 export interface AdminOutletContext { pendingCount: number }
 
@@ -66,8 +67,8 @@ export default function AdminLayout() {
     <div className={cn("flex flex-col bg-[#faf5ec]", timeMap ? "h-dvh" : "min-h-dvh")}>
       <header className="sticky top-0 z-50 shrink-0 border-b border-[#e6d6c2] bg-white/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 px-3 sm:h-16 sm:gap-4 sm:px-6">
-          <div className="flex min-w-0 items-center gap-2">
-            <img src="/images/restaurant/logo.webp" alt="" className="h-9 w-12 shrink-0 rounded-lg bg-white object-contain ring-1 ring-[#e6d6c2]" />
+          <div className="flex shrink-0 items-center gap-2">
+            <img src="/images/restaurant/logo.webp" alt="" className="h-9 w-10 shrink-0 rounded-lg bg-white object-contain ring-1 ring-[#e6d6c2] sm:w-12" />
             <span className="hidden truncate text-sm font-semibold text-[#2b1d17] md:inline">Riverside Terrace Admin</span>
           </div>
           <nav className="mx-auto flex rounded-full bg-[#f3e8dc] p-1" aria-label="Admin sections">
@@ -76,7 +77,7 @@ export default function AdminLayout() {
                 key={to}
                 to={to}
                 className={({ isActive }) => cn(
-                  "relative flex h-9 items-center gap-2 rounded-full px-3 text-sm font-semibold transition sm:px-5",
+                  "relative flex h-9 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold transition sm:gap-2 sm:px-5",
                   isActive ? "bg-[#713a2e] text-white shadow-sm" : "text-[#5b3a2e] hover:bg-white/70",
                 )}
               >
@@ -90,7 +91,8 @@ export default function AdminLayout() {
             ))}
           </nav>
           <div className="flex items-center gap-1">
-            <a href="/home" target="_blank" rel="noreferrer" className="flex h-9 w-9 items-center justify-center rounded-full text-[#5b3a2e] hover:bg-[#713a2e]/10" title="View website" aria-label="View website">
+            <PushToggle />
+            <a href="/home" target="_blank" rel="noreferrer" className="hidden h-9 w-9 items-center justify-center sm:flex rounded-full text-[#5b3a2e] hover:bg-[#713a2e]/10" title="View website" aria-label="View website">
               <ExternalLink className="h-4 w-4" />
             </a>
             <button onClick={() => void logout()} className="flex h-9 w-9 items-center justify-center rounded-full text-[#5b3a2e] hover:bg-[#713a2e]/10" title="Logout" aria-label="Logout">

@@ -1,0 +1,10 @@
+{
+  "name": "Riverside Terrace Admin",
+  "short_name": "RTR Admin",
+  "start_url": "/admin/booking",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#faf5ec",
+  "theme_color": "#713a2e",
+  "icons": [{ "src": "/images/restaurant/logo.webp", "sizes": "512x512", "type": "image/webp", "purpose": "any" }]
+}
