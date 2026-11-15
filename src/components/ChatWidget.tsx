@@ -3,7 +3,11 @@ import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowRight,
+  CalendarCheck,
+  CalendarDays,
   ChefHat,
+  Clock3,
+  Users,
   ChevronDown,
   Leaf,
   Loader2,
@@ -26,6 +30,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import {
   api,
   type ChatAction,
+  type ChatBooking,
+  type ChatBookingRequest,
   type ChatMessage,
   type ChatReply,
   type Preferences,
@@ -34,6 +40,8 @@ import type { MenuItem } from "@/type/type";
 import { chatCopy } from "./chatCopy";
 import { restaurantChatCopy } from "./restaurantChatCopy";
 import { cn } from "@/lib/utils";
+import { useBookingCopy } from "@/content/bookingCopy";
+import { MAX_ONLINE_GUESTS, defaultSearch, restaurantNow, slotsOn } from "@/lib/bookingSlots";
 import "./chat-widget.css";
 
 interface Message extends ChatMessage {
@@ -41,6 +49,7 @@ interface Message extends ChatMessage {
   items?: ChatReply["items"];
   mode?: ChatReply["mode"];
   filters?: ChatReply["appliedFilters"];
+  booking?: ChatBooking | null;
 }
 const defaults: Preferences = {
   diet: "any",
@@ -55,6 +64,7 @@ export function ChatWidget() {
   const navigate = useNavigate();
   const restaurant = location.pathname !== "/menu";
   const r = restaurantChatCopy[language];
+  const { t: tb } = useBookingCopy();
   const t = {
     ...(restaurant ? { ...chatCopy(language), ...r } : chatCopy(language)),
     title: "RTR AI",
@@ -75,8 +85,11 @@ export function ChatWidget() {
   const [failed, setFailed] = useState<{
     content: string;
     action: ChatAction;
+    booking?: ChatBookingRequest;
   } | null>(null);
   const [sent, setSent] = useState(0);
+  const [showAvailability, setShowAvailability] = useState(false);
+  const [availability, setAvailability] = useState(() => ({ ...defaultSearch(), guests: 2 }));
   const bodyRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const controller = useRef<AbortController | null>(null);
@@ -146,6 +159,7 @@ export function ChatWidget() {
     content: string,
     action: ChatAction = "chat",
     retry = false,
+    booking?: ChatBookingRequest,
   ) {
     if (loading || !content.trim() || sent >= 20) return;
     const userMessage: Message = {
@@ -182,6 +196,7 @@ export function ChatWidget() {
         requestController.signal,
         restaurant ? "home" : "menu",
         conversationId.current,
+        booking,
       );
       if (requestController.signal.aborted) return;
       conversationId.current = response.conversationId;
@@ -198,13 +213,14 @@ export function ChatWidget() {
           items: response.items,
           mode: response.mode,
           filters: response.appliedFilters,
+          booking: response.booking,
         },
       ]);
       setSent((count) => count + 1);
     } catch (error) {
       if (requestController.signal.aborted) return;
       setError(error instanceof Error ? error.message : t.error);
-      setFailed({ content, action });
+      setFailed({ content, action, booking });
     } finally {
       if (
         !requestController.signal.aborted &&
@@ -241,6 +257,20 @@ export function ChatWidget() {
       ...(filters.alcohol !== "any" ? [alcohol[language][filters.alcohol === "none" ? 0 : 1]] : []),
     ];
   };
+  const checkAvailability = (request: ChatBookingRequest & { date: string; time: string; guests: number }) => {
+    setShowAvailability(false);
+    const when = new Intl.DateTimeFormat(language === "cn" ? "zh-CN" : language, { weekday: "short", day: "numeric", month: "numeric", timeZone: "UTC" }).format(new Date(`${request.date}T00:00:00Z`));
+    void send(`${tb("chatCheckTables")}: ${when} · ${request.time} · ${request.guests} ${tb("bookingGuestLabel")}`, "availability", false, request);
+  };
+  const openBooking = (booking: ChatBooking, option?: ChatBooking["options"][number]) => {
+    const query = new URLSearchParams({ date: booking.date, time: booking.time, guests: String(booking.guests) });
+    if (option) {
+      query.set("area", option.area);
+      query.set("tables", option.tables.map((table) => table.id).join(","));
+    } else query.set("find", "1");
+    setOpen(false);
+    navigate(`/booking?${query}`);
+  };
   const quick = restaurant
     ? [
         { label: r.location, action: "chat" as const },
@@ -262,13 +292,18 @@ export function ChatWidget() {
         <DialogTrigger asChild>
           <Button
             className={cn(
-              "rtr-ai-launcher fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-[49] h-12 gap-2 rounded-full border px-4 text-sm shadow-lg sm:h-14 sm:px-5",
-              "right-4 border-white/20 bg-[#713a2e] text-white hover:bg-[#572b22] sm:right-6",
+              "rtr-ai-launcher fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-[49] h-12 gap-2 rounded-full border px-4 text-sm font-semibold shadow-xl shadow-[#713a2e]/30 sm:h-14 sm:px-5",
+              "right-4 border-white/20 bg-gradient-to-r from-[#5e2f25] to-[#b5452f] text-white hover:brightness-110 sm:right-6",
               location.pathname === "/home" && "rtr-home-assistant",
+              // Sit above the booking page's sticky "Continue" bar on phones.
+              location.pathname === "/booking" && "max-lg:bottom-[calc(5.25rem+env(safe-area-inset-bottom))]",
             )}
             aria-label={t.open}
           >
-            <Sparkles className="h-4 w-4 shrink-0" />
+            <span className="relative flex">
+              <Sparkles className="h-4 w-4 shrink-0" />
+              <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-[#713a2e]" />
+            </span>
             <span className="whitespace-normal leading-4">{t.open}</span>
           </Button>
         </DialogTrigger>,
@@ -280,10 +315,12 @@ export function ChatWidget() {
         overlayClassName="rtr-ai-overlay"
         className="rtr-ai-panel flex flex-col gap-0 overflow-hidden rounded-none border-0 bg-background p-0 shadow-2xl sm:rounded-3xl [&>button]:hidden"
       >
-        <header className="rtr-ai-header shrink-0 bg-[#713a2e] px-5 pb-5 pt-6 text-white">
+        <header className="rtr-ai-header relative shrink-0 overflow-hidden bg-gradient-to-br from-[#5e2f25] via-[#7d3d2f] to-[#b5452f] px-5 pb-5 pt-6 text-white">
+          <div className="pointer-events-none absolute -right-10 -top-16 h-40 w-40 rounded-full bg-[#f6d9a8]/20 blur-2xl" />
           <div className="rtr-ai-header-row flex items-center gap-3">
-            <div className="rtr-ai-avatar flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10">
+            <div className="rtr-ai-avatar relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/25 bg-white/15 shadow-inner">
               <ChefHat className="h-6 w-6" />
+              <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-[#713a2e]" aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
               <DialogTitle className="text-lg font-semibold tracking-tight">
@@ -433,6 +470,15 @@ export function ChatWidget() {
                 {t.intro}
               </p>
               <div className="mt-6 flex flex-wrap justify-center gap-2">
+                <button
+                  disabled={loading}
+                  onClick={() => setShowAvailability((value) => !value)}
+                  aria-expanded={showAvailability}
+                  className="flex min-h-11 items-center gap-1.5 rounded-full bg-gradient-to-r from-[#713a2e] to-[#b5452f] px-4 text-xs font-semibold text-white shadow-md shadow-[#713a2e]/20 transition hover:brightness-110"
+                >
+                  <CalendarCheck className="h-3.5 w-3.5" />
+                  {tb("chatCheckTables")}
+                </button>
                 {quick.map((item) => (
                   <button
                     key={item.label}
@@ -448,6 +494,42 @@ export function ChatWidget() {
               </div>
             </div>
           )}
+          {showAvailability && (
+            <form
+              onSubmit={(event) => { event.preventDefault(); checkAvailability(availability); }}
+              className="rtr-ai-availability mx-1 space-y-2 rounded-3xl border border-[#eadcc8] bg-white p-3 shadow-lg shadow-[#713a2e]/10"
+            >
+              <p className="flex items-center gap-2 px-1 text-sm font-semibold text-[#713a2e]"><CalendarCheck className="h-4 w-4" />{tb("chatCheckTables")}</p>
+              <label className="flex h-11 items-center gap-2 rounded-2xl border border-[#eadcc8] bg-[#fdf9f3] px-3">
+                <CalendarDays className="h-4 w-4 text-[#b5452f]" />
+                <span className="sr-only">{tb("searchDate")}</span>
+                <input type="date" min={restaurantNow().date} value={availability.date} onChange={(event) => {
+                  const date = event.target.value || restaurantNow().date;
+                  const slots = slotsOn(date);
+                  setAvailability((value) => ({ ...value, date, time: slots.includes(value.time) ? value.time : slots[0] ?? value.time }));
+                }} className="min-w-0 flex-1 bg-transparent text-base outline-none" />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex h-11 items-center gap-2 rounded-2xl border border-[#eadcc8] bg-[#fdf9f3] px-3">
+                  <Clock3 className="h-4 w-4 shrink-0 text-[#b5452f]" />
+                  <span className="sr-only">{tb("searchTime")}</span>
+                  <select value={availability.time} onChange={(event) => setAvailability((value) => ({ ...value, time: event.target.value }))} className="min-w-0 flex-1 bg-transparent text-base outline-none">
+                    {slotsOn(availability.date).map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+                  </select>
+                </label>
+                <label className="flex h-11 items-center gap-2 rounded-2xl border border-[#eadcc8] bg-[#fdf9f3] px-3">
+                  <Users className="h-4 w-4 shrink-0 text-[#b5452f]" />
+                  <span className="sr-only">{tb("searchGuests")}</span>
+                  <select value={availability.guests} onChange={(event) => setAvailability((value) => ({ ...value, guests: Number(event.target.value) }))} className="min-w-0 flex-1 bg-transparent text-base outline-none">
+                    {Array.from({ length: MAX_ONLINE_GUESTS }, (_, index) => index + 1).map((count) => <option key={count} value={count}>{count} {tb("bookingGuestLabel")}</option>)}
+                  </select>
+                </label>
+              </div>
+              <Button type="submit" disabled={loading || sent >= 20} className="h-11 w-full rounded-2xl bg-[#c0392b] font-semibold text-white hover:bg-[#a93226]">
+                {tb("chatCheck")}<ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </form>
+          )}
           <div
             role="log"
             aria-live="polite"
@@ -462,7 +544,7 @@ export function ChatWidget() {
                 }
               >
                 <div
-                  className={`max-w-full ${message.role === "user" ? "rounded-2xl rounded-br-md bg-[#713a2e] px-4 py-3 text-white" : "w-full"}`}
+                  className={`max-w-full ${message.role === "user" ? "rounded-3xl rounded-br-md bg-gradient-to-br from-[#713a2e] to-[#9c4535] px-4 py-3 text-white shadow-md shadow-[#713a2e]/15" : "w-full rounded-3xl rounded-tl-md border border-[#efe2d2] bg-white px-4 py-3 shadow-sm"}`}
                 >
                   {message.role === "assistant" && (
                     <span className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9a6150]">
@@ -485,8 +567,46 @@ export function ChatWidget() {
                     </div>
                   )}
                   <p className="whitespace-pre-wrap break-words text-sm leading-6">
-                    {message.content}
+                    {/* The cards below list each area, so drop the duplicate bullet lines. */}
+                    {message.booking?.options.length
+                      ? message.content.split("\n").filter((line) => !line.startsWith("• ")).join("\n").replace(/\n{3,}/g, "\n\n")
+                      : message.content}
                   </p>
+                  {message.booking && (
+                    <div className="mt-3 space-y-2">
+                      {message.booking.options.map((option) => (
+                        <div key={option.area} className="flex items-center gap-3 rounded-2xl border border-[#eadcc8] bg-[#fdf9f3] p-3">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-lg font-bold text-emerald-800" title={`${option.freeCount} ${tb("statusAvailable")}`}>
+                            {option.freeCount}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-[#2b1d17]">{option.label}</p>
+                            <p className="truncate text-xs text-[#7a5a4c]">{option.freeCount} {tb("statusAvailable").toLowerCase()} · {option.tables.map((table) => table.tableNumber).join(" + ")} · {message.booking!.time}</p>
+                          </div>
+                          <button
+                            onClick={() => openBooking(message.booking!, option)}
+                            className="shrink-0 rounded-full bg-[#c0392b] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#a93226]"
+                          >
+                            {tb("chatBookThis")}
+                          </button>
+                        </div>
+                      ))}
+                      {!message.booking.options.length && message.booking.nextDate && (
+                        <button
+                          disabled={loading}
+                          onClick={() => checkAvailability({ date: message.booking!.nextDate!, time: message.booking!.time, guests: message.booking!.guests, ...(message.booking!.seating ? { seating: message.booking!.seating } : {}) })}
+                          className="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#c9a98c] bg-white px-3 py-2.5 text-sm font-semibold text-[#713a2e] hover:bg-[#fdf9f3]"
+                        >
+                          <CalendarDays className="h-4 w-4" />{tb("chatCheck")} {message.booking.nextDate}
+                        </button>
+                      )}
+                      {message.booking.options.length > 0 && (
+                        <button onClick={() => openBooking(message.booking!)} className="flex w-full items-center justify-center gap-1.5 py-1 text-xs font-medium text-[#713a2e] underline-offset-4 hover:underline">
+                          {tb("findTable")}<ArrowRight className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {Boolean(message.items?.length) && (
                     <div className="mt-3 space-y-2">
                       {message.items.map((item) => (
@@ -535,7 +655,10 @@ export function ChatWidget() {
               role="status"
               className="flex items-center gap-2 py-2 text-xs text-muted-foreground"
             >
-              <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+              <span className="flex items-center gap-1 rounded-2xl rounded-tl-md border border-[#efe2d2] bg-white px-3 py-2.5 shadow-sm" aria-hidden="true">
+                <span className="rtr-ai-dot" /><span className="rtr-ai-dot" /><span className="rtr-ai-dot" />
+              </span>
+              <Loader2 className="sr-only" />
               {t.thinking}
             </div>
           )}
@@ -547,7 +670,7 @@ export function ChatWidget() {
               <p>{error}</p>
               {failed && (
                 <button
-                  onClick={() => void send(failed.content, failed.action, true)}
+                  onClick={() => void send(failed.content, failed.action, true, failed.booking)}
                   className="mt-2 min-h-9 font-semibold underline underline-offset-4"
                 >
                   {t.retry}
@@ -570,8 +693,18 @@ export function ChatWidget() {
               event.preventDefault();
               void send(input);
             }}
-            className="flex items-end gap-2 rounded-2xl border bg-muted/20 p-1.5 focus-within:border-[#9a6150] focus-within:ring-2 focus-within:ring-[#9a6150]/10"
+            className="flex items-end gap-1.5 rounded-2xl border bg-muted/20 p-1.5 focus-within:border-[#9a6150] focus-within:ring-2 focus-within:ring-[#9a6150]/10"
           >
+            <button
+              type="button"
+              onClick={() => { setShowAvailability((value) => !value); requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" })); }}
+              aria-expanded={showAvailability}
+              aria-label={tb("chatCheckTables")}
+              title={tb("chatCheckTables")}
+              className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition", showAvailability ? "bg-[#713a2e] text-white" : "text-[#713a2e] hover:bg-[#713a2e]/10")}
+            >
+              <CalendarCheck className="h-5 w-5" />
+            </button>
             <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}

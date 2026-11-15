@@ -1,33 +1,32 @@
 import { Layer, Rect, Stage, Text } from "react-konva";
-import { CalendarCheck, ImageIcon, Loader2, RefreshCw, Sparkles } from "lucide-react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { AlertCircle, ArrowRight, CalendarCheck, CheckCircle2, ImageIcon, Loader2, RefreshCw, Sun, Home as HomeIcon, Shuffle } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "@/components/ui/carousel";
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { useToast } from "@/hooks/use-toast";
-import { AREAS, ApiError, publicBookingApi as publicApi, toDateInputValue } from "@/lib/bookingApi";
+import { AREAS, ApiError, publicBookingApi as publicApi } from "@/lib/bookingApi";
 import { Booking as BookingResult, RequestOtpResponse, RestaurantArea, RestaurantTable, TableStatus } from "@/types/booking";
 import { useBookingCopy } from "@/content/bookingCopy";
 import { AREA_PHOTOS } from "@/content/areaPhotos";
-import { Navigation } from "@/components/Navigation";
+import { SiteHeader } from "@/components/SiteHeader";
+import { BookingSearch, type BookingSearchValue } from "@/components/BookingSearch";
+import { MAX_ONLINE_GUESTS, defaultEndFor, endSlotsFor, normaliseSearch, restaurantNow } from "@/lib/bookingSlots";
+import { cn } from "@/lib/utils";
 
 const statusColor: Record<TableStatus, string> = {
-  AVAILABLE: "#16a34a",
-  HOLD: "#f59e0b",
-  RESERVED: "#dc2626",
-  OCCUPIED: "#7c2d12",
-  MAINTENANCE: "#6b7280",
+  AVAILABLE: "#2f9e5b",
+  HOLD: "#e3a008",
+  RESERVED: "#d64545",
+  OCCUPIED: "#8a4b2d",
+  MAINTENANCE: "#9aa0a6",
 };
+const SELECTED_COLOR = "#2563eb";
 
 const statusLabelKey: Record<TableStatus, string> = {
   AVAILABLE: "statusAvailable",
@@ -37,16 +36,22 @@ const statusLabelKey: Record<TableStatus, string> = {
   MAINTENANCE: "statusMaintenance",
 };
 
+type Seating = "any" | "outside" | "inside";
+const isArea = (value: string | null): value is RestaurantArea => AREAS.some((item) => item.value === value);
 
 export default function Booking() {
-  const today = toDateInputValue(new Date());
-  const [area, setArea] = useState<RestaurantArea>("TERRACE");
+  const [params, setParams] = useSearchParams();
+  const initialSearch = useMemo(() => normaliseSearch(params.get("date"), params.get("time")), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const initialGuests = Math.min(Math.max(Number(params.get("guests")) || 2, 1), MAX_ONLINE_GUESTS);
+  const [area, setArea] = useState<RestaurantArea>(isArea(params.get("area")) ? (params.get("area") as RestaurantArea) : "TERRACE");
+  const [seating, setSeating] = useState<Seating>(params.get("seating") === "inside" || params.get("seating") === "outside" ? (params.get("seating") as Seating) : "any");
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [selectedTableIds, setSelectedTableIds] = useState<number[]>([]);
   const [loadingTables, setLoadingTables] = useState(false);
+  const [tablesError, setTablesError] = useState("");
+  const [finding, setFinding] = useState(false);
+  const [findMessage, setFindMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [showPhotos, setShowPhotos] = useState(false);
-  const [showSuggestion, setShowSuggestion] = useState(false);
-  const [suggesting, setSuggesting] = useState(false);
   const [otpSession, setOtpSession] = useState<RequestOtpResponse | null>(null);
   const [otp, setOtp] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -54,6 +59,7 @@ export default function Booking() {
   const [confirmationError, setConfirmationError] = useState(false);
   const [result, setResult] = useState<BookingResult | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const detailsRef = useRef<HTMLFormElement>(null);
   const tablesRequestIdRef = useRef(0);
   const pendingSuggestedIdsRef = useRef<number[] | null>(null);
   const [canvasContainerWidth, setCanvasContainerWidth] = useState(520);
@@ -66,29 +72,24 @@ export default function Booking() {
     customerName: "",
     customerEmail: "",
     customerPhone: "",
-    numberOfGuests: "2",
-    bookingDate: today,
-    startTime: "18:00",
-    endTime: "20:00",
+    numberOfGuests: String(initialGuests),
+    bookingDate: initialSearch.date,
+    startTime: initialSearch.time,
+    endTime: defaultEndFor(initialSearch.time),
     note: "",
   });
-  const [suggestForm, setSuggestForm] = useState({
-    numberOfGuests: "2",
-    bookingDate: today,
-    startTime: "18:00",
-    endTime: "20:00",
-    seating: "outside" as "inside" | "outside",
-  });
+  // The requested slot was in the past and has been moved forward.
+  const adjusted = Boolean(params.get("time")) && (params.get("date") !== initialSearch.date || params.get("time") !== initialSearch.time);
 
   const displayTables = tables.filter((table) => table.area === area).sort((a, b) =>
-    a.tableNumber.localeCompare(b.tableNumber, undefined, {
-      numeric: true,
-      sensitivity: "base",
-    }),
+    a.tableNumber.localeCompare(b.tableNumber, undefined, { numeric: true, sensitivity: "base" }),
   );
   const selectedTables = displayTables.filter((table) => selectedTableIds.includes(table.id));
   const selectedCapacity = selectedTables.reduce((total, table) => total + table.capacity, 0);
   const guestCount = Number(form.numberOfGuests) || 0;
+  const availableCount = displayTables.filter((table) => table.status === "AVAILABLE").length;
+
+  // ---- floor plan geometry (RTR layout) ----
   const columnTableLayout = {
     TERRACE: { prefix: "T", leftMax: 6, rightMax: 12 },
     VERONA: { prefix: "V", leftMax: 10, rightMax: 16 },
@@ -108,17 +109,17 @@ export default function Booking() {
   const fallbackTables = displayTables.filter((table) => tableNumberIndex(table) === Number.POSITIVE_INFINITY);
   const canvasTables = useColumnTableLayout ? [...leftColumnTables, ...rightColumnTables, ...fallbackTables] : displayTables;
   const canvasWidth = 520;
-  const tableWidth = 190;
-  const tableHeight = 68;
-  const rowGap = 18;
-  const columnGap = 36;
-  const canvasPadding = 28;
+  const tableWidth = 200;
+  const tableHeight = 64;
+  const rowGap = 16;
+  const columnGap = 64;
+  const canvasPadding = 20;
   const leftX = canvasPadding;
   const rightX = canvasPadding + tableWidth + columnGap;
   const rowCount = useColumnTableLayout
     ? Math.max(1, leftColumnTables.length, rightColumnTables.length + fallbackTables.length)
     : Math.max(1, Math.ceil(displayTables.length / 2));
-  const canvasHeight = Math.max(300, canvasPadding * 2 + rowCount * (tableHeight + rowGap) - rowGap);
+  const canvasHeight = Math.max(240, canvasPadding * 2 + rowCount * (tableHeight + rowGap) - rowGap);
   const stageWidth = Math.max(1, Math.min(canvasWidth, canvasContainerWidth));
   const stageScale = stageWidth / canvasWidth;
   const stageHeight = canvasHeight * stageScale;
@@ -126,35 +127,17 @@ export default function Booking() {
   const getTablePosition = (table: RestaurantTable) => {
     if (!useColumnTableLayout) {
       const index = displayTables.findIndex((item) => item.id === table.id);
-      if (index < rowCount) {
-        return {
-          x: leftX,
-          y: canvasPadding + (rowCount - 1 - index) * (tableHeight + rowGap),
-        };
-      }
-      return {
-        x: rightX,
-        y: canvasPadding + (index - rowCount) * (tableHeight + rowGap),
-      };
+      if (index < rowCount) return { x: leftX, y: canvasPadding + (rowCount - 1 - index) * (tableHeight + rowGap) };
+      return { x: rightX, y: canvasPadding + (index - rowCount) * (tableHeight + rowGap) };
     }
-
     const numberIndex = tableNumberIndex(table);
     if (columnTableLayout && numberIndex <= columnTableLayout.leftMax) {
-      return {
-        x: leftX,
-        y: canvasPadding + (leftColumnTables.length - 1 - leftColumnTables.findIndex((item) => item.id === table.id)) * (tableHeight + rowGap),
-      };
+      return { x: leftX, y: canvasPadding + (leftColumnTables.length - 1 - leftColumnTables.findIndex((item) => item.id === table.id)) * (tableHeight + rowGap) };
     }
     if (columnTableLayout && numberIndex > columnTableLayout.leftMax && numberIndex <= columnTableLayout.rightMax) {
-      return {
-        x: rightX,
-        y: canvasPadding + rightColumnTables.findIndex((item) => item.id === table.id) * (tableHeight + rowGap),
-      };
+      return { x: rightX, y: canvasPadding + rightColumnTables.findIndex((item) => item.id === table.id) * (tableHeight + rowGap) };
     }
-    return {
-      x: rightX,
-      y: canvasPadding + (rightColumnTables.length + fallbackTables.findIndex((item) => item.id === table.id)) * (tableHeight + rowGap),
-    };
+    return { x: rightX, y: canvasPadding + (rightColumnTables.length + fallbackTables.findIndex((item) => item.id === table.id)) * (tableHeight + rowGap) };
   };
 
   useEffect(() => {
@@ -166,22 +149,32 @@ export default function Booking() {
   useEffect(() => {
     const element = canvasContainerRef.current;
     if (!element) return;
-
     const updateWidth = () => setCanvasContainerWidth(Math.max(1, Math.floor(element.getBoundingClientRect().width) - 1));
     updateWidth();
-
     const observer = new ResizeObserver(updateWidth);
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
 
+  // Arriving from the home page or the chat: preselect tables or search straight away.
+  useEffect(() => {
+    const preset = (params.get("tables") || "").split(",").map(Number).filter(Boolean);
+    if (preset.length) pendingSuggestedIdsRef.current = preset;
+    else if (params.get("find") === "1") void findBest({ date: form.bookingDate, time: form.startTime, guests: guestCount }, seating);
+    if (params.has("find") || params.has("tables")) {
+      const next = new URLSearchParams(params);
+      next.delete("find");
+      next.delete("tables");
+      setParams(next, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const loadTables = async ({ clear = false }: { clear?: boolean } = {}) => {
     const requestId = tablesRequestIdRef.current + 1;
     tablesRequestIdRef.current = requestId;
-    if (clear) {
-      setTables([]);
-    }
+    if (clear) setTables([]);
     setLoadingTables(true);
+    setTablesError("");
     try {
       const data = await publicApi.availability({
         area,
@@ -193,78 +186,67 @@ export default function Booking() {
       if (requestId !== tablesRequestIdRef.current) return;
       setTables(data);
       if (pendingSuggestedIdsRef.current) {
-        setSelectedTableIds(pendingSuggestedIdsRef.current);
+        const wanted = pendingSuggestedIdsRef.current;
+        setSelectedTableIds(wanted.filter((id) => data.some((table) => table.id === id && table.status === "AVAILABLE")));
         pendingSuggestedIdsRef.current = null;
       }
     } catch (error) {
       if (requestId !== tablesRequestIdRef.current) return;
       setTables([]);
-      toast({ title: t("bookingCannotLoadTables"), description: error instanceof Error ? error.message : t("bookingTryAgain"), variant: "destructive" });
+      setTablesError(error instanceof Error ? error.message : t("bookingTryAgain"));
     } finally {
-      if (requestId === tablesRequestIdRef.current) {
-        setLoadingTables(false);
-      }
+      if (requestId === tablesRequestIdRef.current) setLoadingTables(false);
     }
   };
 
-  const openSuggestion = () => {
-    setSuggestForm({
-      numberOfGuests: form.numberOfGuests,
-      bookingDate: form.bookingDate,
-      startTime: form.startTime,
-      endTime: form.endTime,
-      seating: area === "TERRACE" ? "outside" : "inside",
-    });
-    setShowSuggestion(true);
-  };
-
-  const suggestBestTable = async () => {
-    const guests = Number(suggestForm.numberOfGuests);
-    if (!suggestForm.bookingDate || !suggestForm.startTime || !suggestForm.endTime
-      || !Number.isInteger(guests) || guests < 1 || guests > 6
-      || suggestForm.endTime <= suggestForm.startTime) {
-      toast({ title: t("bookingSuggestionFailed"), description: t("bookingSuggestionInvalid"), variant: "destructive" });
-      return;
-    }
-    setSuggesting(true);
+  /** Search button: apply the date/time/party size and pick the best tables for the chosen seating. */
+  const findBest = async (search: BookingSearchValue, seatingChoice: Seating = seating) => {
+    const next = normaliseSearch(search.date, search.time);
+    const endTime = form.startTime === next.time ? form.endTime : defaultEndFor(next.time);
+    setForm((current) => ({ ...current, bookingDate: next.date, startTime: next.time, endTime, numberOfGuests: String(search.guests) }));
+    setParams((current) => {
+      const updated = new URLSearchParams(current);
+      updated.set("date", next.date);
+      updated.set("time", next.time);
+      updated.set("guests", String(search.guests));
+      return updated;
+    }, { replace: true });
+    setFinding(true);
+    setFindMessage(null);
+    const order: ("outside" | "inside")[] = seatingChoice === "any" ? ["outside", "inside"] : [seatingChoice];
     try {
-      const suggestion = await publicApi.suggestBestTable({
-        seating: suggestForm.seating,
-        date: suggestForm.bookingDate,
-        startTime: suggestForm.startTime,
-        endTime: suggestForm.endTime,
-        guests,
-      });
-      const suggestedIds = suggestion.tables.map((table) => table.id);
-      pendingSuggestedIdsRef.current = suggestedIds;
-      setSelectedTableIds(suggestedIds);
-      setForm((current) => ({
-        ...current,
-        numberOfGuests: suggestForm.numberOfGuests,
-        bookingDate: suggestForm.bookingDate,
-        startTime: suggestForm.startTime,
-        endTime: suggestForm.endTime,
-      }));
-      setArea(suggestion.area);
-      setShowSuggestion(false);
-      toast({
-        title: t("bookingSuggestionFound"),
-        description: `${suggestion.area}: ${suggestion.tables.map((table) => table.tableNumber).join(", ")}`,
-      });
+      for (const option of order) {
+        try {
+          const suggestion = await publicApi.suggestBestTable({ seating: option, date: next.date, startTime: next.time, endTime, guests: search.guests });
+          pendingSuggestedIdsRef.current = suggestion.tables.map((table) => table.id);
+          setArea(suggestion.area);
+          setFindMessage({ ok: true, text: `${t("bookingFoundIn")} ${AREAS.find((item) => item.value === suggestion.area)?.label}: ${suggestion.tables.map((table) => table.tableNumber).join(", ")}` });
+          return;
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.status !== 404) throw error;
+        }
+      }
+      setFindMessage({ ok: false, text: t("bookingNoneFound") });
     } catch (error) {
-      toast({ title: t("bookingSuggestionFailed"), description: error instanceof Error ? error.message : t("bookingSuggestionNone"), variant: "destructive" });
+      setFindMessage({ ok: false, text: error instanceof Error ? error.message : t("bookingTryAgain") });
     } finally {
-      setSuggesting(false);
+      setFinding(false);
     }
   };
+  // When the suggestion is in the area already shown, the effect above does not refire.
+  useEffect(() => {
+    if (!finding && pendingSuggestedIdsRef.current && !loadingTables) void loadTables();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- apply a pending suggestion once the search settles
+  }, [finding]);
 
   const validate = () => {
     if (!form.customerName.trim()) return `${t("bookingCustomerName")} ${t("bookingRequired")}`;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.customerEmail)) return t("bookingEmailInvalid");
     if (!/^[0-9+\-\s()]{8,20}$/.test(form.customerPhone)) return t("bookingPhoneInvalid");
     if (guestCount <= 0) return t("bookingGuestInvalid");
-    if (guestCount > 6) return t("bookingLargeParty");
-    if (new Date(`${form.bookingDate}T${form.startTime}`) < new Date()) return t("bookingPastTime");
+    if (guestCount > MAX_ONLINE_GUESTS) return t("bookingLargeParty");
+    const now = restaurantNow();
+    if (form.bookingDate < now.date || (form.bookingDate === now.date && form.startTime <= now.time)) return t("bookingPastTime");
     if (form.endTime <= form.startTime) return t("bookingEndAfterStart");
     if (selectedTables.length === 0) return t("bookingChooseTables");
     if (selectedTables.some((table) => table.status !== "AVAILABLE")) return t("bookingUnavailableSelected");
@@ -275,52 +257,32 @@ export default function Booking() {
 
   const toggleTable = (table: RestaurantTable) => {
     if (table.status !== "AVAILABLE") return;
+    const warn = (description: string) => toast({ title: t("bookingFormIncomplete"), description, variant: "destructive" });
     if (area === "VERONA" && guestCount < 3) {
       toast({ title: t("bookingVeronaLocked"), description: t("bookingVeronaMinimum"), variant: "destructive" });
       return;
     }
     if (selectedTableIds.includes(table.id)) {
-      const remainingTables = selectedTables.filter((item) => item.id !== table.id);
-      const remainingNumbers = remainingTables
-        .map((item) => Number(item.tableNumber.replace(/\D/g, "")))
-        .sort((a, b) => a - b);
-      const remainsAdjacent = remainingNumbers.every((number, index) => index === 0 || number === remainingNumbers[index - 1] + 1);
-      if (!remainsAdjacent) {
-        toast({ title: t("bookingFormIncomplete"), description: t("bookingRemoveFromEnd"), variant: "destructive" });
-        return;
-      }
-      setSelectedTableIds(remainingTables.map((item) => item.id));
+      const remaining = selectedTables.filter((item) => item.id !== table.id);
+      const numbers = remaining.map((item) => Number(item.tableNumber.replace(/\D/g, ""))).sort((a, b) => a - b);
+      if (!numbers.every((number, index) => index === 0 || number === numbers[index - 1] + 1)) return warn(t("bookingRemoveFromEnd"));
+      setSelectedTableIds(remaining.map((item) => item.id));
+      return;
+    }
+    // Parties of 1-2 take one table: tapping another one moves the selection.
+    if (guestCount <= 2) {
+      setSelectedTableIds([table.id]);
       return;
     }
     const nextTables = [...selectedTables, table];
-    const nextCapacity = nextTables.reduce((total, item) => total + item.capacity, 0);
-    if (nextTables.length > 3) {
-      toast({ title: t("bookingFormIncomplete"), description: t("bookingMaxTables"), variant: "destructive" });
-      return;
-    }
-    if (nextCapacity > 6) {
-      toast({ title: t("bookingFormIncomplete"), description: t("bookingMaxCapacity"), variant: "destructive" });
-      return;
-    }
-    const numbers = nextTables
-      .map((item) => Number(item.tableNumber.replace(/\D/g, "")))
-      .sort((a, b) => a - b);
-    const adjacent = numbers.every((number, index) => index === 0 || number === numbers[index - 1] + 1);
-    if (!adjacent) {
-      toast({ title: t("bookingFormIncomplete"), description: t("bookingAdjacentOnly"), variant: "destructive" });
-      return;
-    }
-    if (area === "TERRACE" && numbers.includes(6) && numbers.includes(7)) {
-      toast({ title: t("bookingFormIncomplete"), description: t("bookingNoJoinT6T7"), variant: "destructive" });
-      return;
-    }
+    if (nextTables.length > 3) return warn(t("bookingMaxTables"));
+    if (nextTables.reduce((total, item) => total + item.capacity, 0) > 6) return warn(t("bookingMaxCapacity"));
+    const numbers = nextTables.map((item) => Number(item.tableNumber.replace(/\D/g, ""))).sort((a, b) => a - b);
+    if (!numbers.every((number, index) => index === 0 || number === numbers[index - 1] + 1)) return warn(t("bookingAdjacentOnly"));
+    if (area === "TERRACE" && numbers.includes(6) && numbers.includes(7)) return warn(t("bookingNoJoinT6T7"));
     if (area === "VERONA" && numbers.some((number) => number >= 11)) {
       const fixedPairs = [[11, 12], [13, 14], [15, 16]];
-      const belongsToOneFixedPair = fixedPairs.some((pair) => numbers.every((number) => pair.includes(number)));
-      if (!belongsToOneFixedPair || nextTables.length > 2) {
-        toast({ title: t("bookingFormIncomplete"), description: t("bookingVeronaPairs"), variant: "destructive" });
-        return;
-      }
+      if (!fixedPairs.some((pair) => numbers.every((number) => pair.includes(number))) || nextTables.length > 2) return warn(t("bookingVeronaPairs"));
     }
     setSelectedTableIds(nextTables.map((item) => item.id));
   };
@@ -355,9 +317,7 @@ export default function Booking() {
       setOtp("");
       toast({ title: t("bookingOtpSent"), description: t("bookingOtpSentDescription") });
     } catch (error) {
-      if (error instanceof ApiError && error.code === "TABLE_NOT_AVAILABLE") {
-        await loadTables();
-      }
+      if (error instanceof ApiError && error.code === "TABLE_NOT_AVAILABLE") await loadTables();
       toast({ title: t("bookingCannotRequestOtp"), description: error instanceof Error ? error.message : t("bookingTryAnotherTable"), variant: "destructive" });
     } finally {
       setSubmitting(false);
@@ -374,9 +334,7 @@ export default function Booking() {
       if (booking.warning) toast({ title: t("bookingSuccessTitle"), description: booking.warning });
       await loadTables();
     } catch (error) {
-      if (error instanceof ApiError && error.code === "TABLE_NOT_AVAILABLE") {
-        await loadTables();
-      }
+      if (error instanceof ApiError && error.code === "TABLE_NOT_AVAILABLE") await loadTables();
       toast({ title: t("bookingOtpFailed"), description: error instanceof Error ? error.message : t("bookingTryAgain"), variant: "destructive" });
     } finally {
       setSubmitting(false);
@@ -395,183 +353,254 @@ export default function Booking() {
     }
   };
 
+  const seatingOptions: { value: Seating; label: string; icon: typeof Sun }[] = [
+    { value: "any", label: t("seatingAny"), icon: Shuffle },
+    { value: "outside", label: t("bookingOutside"), icon: Sun },
+    { value: "inside", label: t("bookingInside"), icon: HomeIcon },
+  ];
+  const selectionLabel = selectedTables.length
+    ? `${selectedTables.map((table) => table.tableNumber).join(", ")} · ${selectedCapacity} ${t("bookingSeats")}`
+    : t("bookingChooseTables");
+
   return (
-    <div className="min-h-screen bg-background">
-    <Navigation />
-    <div className="mx-auto w-full max-w-6xl overflow-x-hidden px-3 py-6 sm:px-4 sm:py-8">
-      <div className="mb-6">
-        <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-primary">{t("bookingEyebrow")}</p>
-        <h1 className="text-3xl font-semibold md:text-4xl">{t("bookingTitle")}</h1>
-      </div>
+    <div className="min-h-screen bg-[#faf5ec] text-[#2b1d17]">
+      <SiteHeader />
 
-      <div className="mb-5 flex gap-2 overflow-x-auto pb-2">
-        {AREAS.map((item) => (
-          <button
-            key={item.value}
-            type="button"
-            onClick={() => setArea(item.value)}
-            className={`h-11 shrink-0 rounded-md border px-4 text-sm font-semibold transition ${area === item.value ? "bg-primary text-primary-foreground" : "bg-card text-foreground"}`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-        <section className="min-w-0 overflow-hidden rounded-md border bg-card p-3 shadow-sm sm:p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="font-semibold">{AREAS.find((item) => item.value === area)?.label} {t("bookingTables")}</h2>
-            <Button type="button" variant="outline" size="sm" onClick={() => loadTables()} disabled={loadingTables}>
-              {loadingTables ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-              {t("bookingRefresh")}
-            </Button>
-          </div>
-          <div className="w-full min-w-0 overflow-hidden rounded-2xl border bg-muted/30">
-            <div ref={canvasContainerRef} className="table-map-touch block w-full min-w-0 overflow-hidden">
-              <Stage preventDefault={false} width={stageWidth} height={stageHeight} scaleX={stageScale} scaleY={stageScale}>
-                <Layer>
-                  <Rect preventDefault={false} x={0} y={0} width={canvasWidth} height={canvasHeight} fill="#f8fafc" />
-                  {canvasTables.map((table) => {
-                    const selected = selectedTableIds.includes(table.id);
-                    const disabled = table.status !== "AVAILABLE" || (area === "VERONA" && guestCount < 3);
-                    const { x, y } = getTablePosition(table);
-                    const fill = selected ? "#2563eb" : statusColor[table.status];
-                    return (
-                      <Rect
-                        key={`${table.id}-hitbox`}
-                        preventDefault={false}
-                        x={x}
-                        y={y}
-                        width={tableWidth}
-                        height={tableHeight}
-                        cornerRadius={10}
-                        fill={fill}
-                        opacity={disabled ? 0.55 : 1}
-                        stroke={selected ? "#1d4ed8" : "#ffffff"}
-                        strokeWidth={selected ? 5 : 3}
-                        shadowColor="rgba(15, 23, 42, 0.18)"
-                        shadowBlur={selected ? 12 : 5}
-                        shadowOffsetY={2}
-                        onClick={() => toggleTable(table)}
-                      />
-                    );
-                  })}
-                  {canvasTables.map((table) => {
-                    const disabled = table.status !== "AVAILABLE" || (area === "VERONA" && guestCount < 3);
-                    const { x, y } = getTablePosition(table);
-                    return (
-                      <Text
-                        key={`${table.id}-label`}
-                        x={x}
-                        y={y + 12}
-                        width={tableWidth}
-                        height={tableHeight - 12}
-                        align="center"
-                        fill="#ffffff"
-                        listening={false}
-                        text={`${table.tableNumber}\n${table.capacity} ${t("bookingGuestLabel")}${disabled ? ` · ${t(statusLabelKey[table.status])}` : ""}`}
-                        fontStyle="bold"
-                        fontSize={16}
-                        lineHeight={1.35}
-                      />
-                    );
-                  })}
-                </Layer>
-              </Stage>
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#5e2f25] via-[#7d3d2f] to-[#b5452f] text-white">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#f6d9a8]/15 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-32 -left-16 h-72 w-72 rounded-full bg-[#2f9e5b]/15 blur-3xl" />
+        <div className="relative mx-auto max-w-6xl px-4 pb-6 pt-7 sm:px-6 sm:pb-8 sm:pt-10">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#f6d9a8]">{t("bookingEyebrow")}</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{t("bookingTitle")}</h1>
+          <p className="mt-2 max-w-xl text-sm text-white/80">{t("heroBookHint")}</p>
+          <div className="mt-5 rounded-3xl bg-white/10 p-2 ring-1 ring-white/20 backdrop-blur">
+            <BookingSearch
+              variant="hero"
+              busy={finding}
+              value={{ date: form.bookingDate, time: form.startTime, guests: guestCount }}
+              onSubmit={(value) => void findBest(value)}
+            />
+            <div className="mt-2 flex gap-1.5 overflow-x-auto px-1 pb-1" role="radiogroup" aria-label={t("bookingSeating")}>
+              {seatingOptions.map(({ value, label, icon: Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={seating === value}
+                  onClick={() => setSeating(value)}
+                  className={cn("flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition", seating === value ? "bg-white text-[#713a2e] shadow-sm" : "text-white/85 hover:bg-white/15")}
+                >
+                  <Icon className="h-4 w-4" />{label}
+                </button>
+              ))}
             </div>
-            {!loadingTables && displayTables.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t("bookingNoTables")}</p>}
           </div>
-          <div className="mt-4 flex flex-wrap gap-3 text-xs">
-            {Object.entries(statusColor).map(([status, color]) => (
-              <span key={status} className="inline-flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
-                {t(statusLabelKey[status as TableStatus])}
-              </span>
-            ))}
-            <span className="inline-flex items-center gap-2">
-              <span className="h-3 w-3 rounded-full bg-blue-600" />
-              {t("bookingSelected")} · {selectedTables.length} {selectedTables.length === 1 ? t("bookingTableSingular") : t("bookingTablePlural")} · {selectedCapacity} {t("bookingSeats")}
-            </span>
-          </div>
-          <Button type="button" variant="secondary" className="mt-4" onClick={() => setShowPhotos(true)}>
-            <ImageIcon className="mr-2 h-4 w-4" />
-            {t("bookingAreaPhotos")}
-          </Button>
-          <Button type="button" className="ml-2 mt-4" onClick={openSuggestion}>
-            <Sparkles className="mr-2 h-4 w-4" />
-            {t("bookingSuggestBest")}
-          </Button>
-        </section>
-
-        <form onSubmit={submitBooking} className="min-w-0 rounded-md border bg-card p-3 shadow-sm sm:p-4">
-          <h2 className="mb-4 font-semibold">{t("bookingDetails")}</h2>
-          <div className="grid gap-4">
-            <Field label={t("bookingCustomerName")} id="customerName" placeholder="Nguyen Van A" value={form.customerName} onChange={(value) => setForm({ ...form, customerName: value })} />
-            <Field label={t("bookingEmail")} id="customerEmail" type="email" placeholder="name@example.com" value={form.customerEmail} onChange={(value) => setForm({ ...form, customerEmail: value })} />
-            <Field label={t("bookingPhone")} id="customerPhone" type="tel" placeholder="0912 345 678" value={form.customerPhone} onChange={(value) => setForm({ ...form, customerPhone: value })} />
-            <Field label={t("bookingGuests")} id="numberOfGuests" type="number" placeholder="2" min="1" max="6" value={form.numberOfGuests} onChange={(value) => {
-              setForm({ ...form, numberOfGuests: value });
-            }} />
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              {t("bookingLargeParty")}
+          {(findMessage || adjusted) && (
+            <p role="status" className={cn("mt-3 flex items-start gap-2 rounded-2xl px-3 py-2 text-sm", findMessage?.ok ? "bg-emerald-500/25 text-emerald-50" : "bg-white/15 text-white")}>
+              {findMessage?.ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />}
+              {findMessage?.text ?? t("bookingTimeAdjusted")}
             </p>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field label={t("bookingDate")} id="bookingDate" type="date" placeholder="YYYY-MM-DD" min={today} value={form.bookingDate} onChange={(value) => setForm({ ...form, bookingDate: value })} />
-              <Field label={t("bookingStart")} id="startTime" type="time" placeholder="HH:mm" value={form.startTime} onChange={(value) => setForm({ ...form, startTime: value })} />
-              <Field label={t("bookingEnd")} id="endTime" type="time" placeholder="HH:mm" value={form.endTime} onChange={(value) => setForm({ ...form, endTime: value })} />
-            </div>
-            <div>
-              <Label>{t("bookingSelectedTables")} <RequiredMark /></Label>
-              <div className="mt-2 rounded-md border bg-muted/40 px-3 py-3 text-sm">
-                {selectedTables.length
-                  ? `${selectedTables.map((table) => table.tableNumber).join(", ")} · ${selectedCapacity} ${t("bookingSeats")}`
-                  : t("bookingChooseTables")}
+          )}
+        </div>
+      </section>
+
+      <div className="mx-auto w-full max-w-6xl px-4 pb-32 pt-5 sm:px-6 lg:pb-12">
+        <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+          <section className="min-w-0 rounded-3xl border border-[#eadcc8] bg-white p-3 shadow-sm sm:p-5" aria-labelledby="tables-heading">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 id="tables-heading" className="flex items-center gap-2 text-base font-semibold">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#713a2e] text-xs text-white">1</span>
+                {t("bookingStepTable")}
+              </h2>
+              <div className="flex gap-1">
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-3" onClick={() => setShowPhotos(true)} aria-label={t("bookingAreaPhotos")}>
+                  <ImageIcon className="h-4 w-4" /><span className="ml-1.5 hidden sm:inline">{t("bookingAreaPhotos")}</span>
+                </Button>
+                <Button type="button" variant="ghost" size="sm" className="h-9 rounded-full px-3" onClick={() => loadTables()} disabled={loadingTables} aria-label={t("bookingRefresh")}>
+                  {loadingTables ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                </Button>
               </div>
             </div>
-            {selectedTables.length > 0 && selectedCapacity < guestCount && (
-              <p className="text-sm text-destructive">{t("bookingNotEnoughSeats")}</p>
-            )}
-            <div>
-              <Label htmlFor="note">{t("bookingNotes")}</Label>
-              <Textarea className="rounded-xl" id="note" value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} placeholder={t("bookingOptional")} />
+
+            <div className="-mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1" role="tablist" aria-label={t("bookingArea")}>
+              {AREAS.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={area === item.value}
+                  onClick={() => setArea(item.value)}
+                  className={cn(
+                    "h-10 shrink-0 rounded-full border px-4 text-sm font-semibold transition",
+                    area === item.value ? "border-[#713a2e] bg-[#713a2e] text-white shadow-sm" : "border-[#eadcc8] bg-[#fdf9f3] text-[#5b3a2e] hover:border-[#c9a98c]",
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
-            <div className={`flex items-start gap-3 rounded-md border p-3 transition-colors ${confirmationError ? "border-destructive bg-destructive/5 ring-1 ring-destructive" : "border-border"}`}>
-              <Checkbox
-                id="informationConfirmed"
-                checked={informationConfirmed}
-                aria-invalid={confirmationError}
-                onCheckedChange={(checked) => {
-                  const confirmed = checked === true;
-                  setInformationConfirmed(confirmed);
-                  if (confirmed) setConfirmationError(false);
-                }}
-              />
-              <Label htmlFor="informationConfirmed" className={`cursor-pointer text-sm leading-5 ${confirmationError ? "text-destructive" : ""}`}>
-                {t("bookingConfirmationLabel")} <RequiredMark />
-              </Label>
+
+            <div className="relative w-full min-w-0 overflow-hidden rounded-2xl border border-[#f0e4d4] bg-[#fdf9f3]">
+              <div ref={canvasContainerRef} className="table-map-touch block w-full min-w-0 overflow-hidden">
+                <Stage preventDefault={false} width={stageWidth} height={stageHeight} scaleX={stageScale} scaleY={stageScale}>
+                  <Layer>
+                    <Rect preventDefault={false} x={0} y={0} width={canvasWidth} height={canvasHeight} fill="#fdf9f3" />
+                    {canvasTables.map((table) => {
+                      const selected = selectedTableIds.includes(table.id);
+                      const disabled = table.status !== "AVAILABLE" || (area === "VERONA" && guestCount < 3);
+                      const { x, y } = getTablePosition(table);
+                      return (
+                        <Rect
+                          key={`${table.id}-hitbox`}
+                          preventDefault={false}
+                          x={x}
+                          y={y}
+                          width={tableWidth}
+                          height={tableHeight}
+                          cornerRadius={16}
+                          fill={selected ? SELECTED_COLOR : statusColor[table.status]}
+                          opacity={disabled ? 0.45 : 1}
+                          stroke={selected ? "#1e40af" : "#ffffff"}
+                          strokeWidth={selected ? 5 : 2}
+                          shadowColor="rgba(60, 30, 20, 0.18)"
+                          shadowBlur={selected ? 14 : 6}
+                          shadowOffsetY={3}
+                          onClick={() => toggleTable(table)}
+                          onTap={() => toggleTable(table)}
+                        />
+                      );
+                    })}
+                    {canvasTables.map((table) => {
+                      const disabled = table.status !== "AVAILABLE" || (area === "VERONA" && guestCount < 3);
+                      const { x, y } = getTablePosition(table);
+                      return (
+                        <Text
+                          key={`${table.id}-label`}
+                          x={x}
+                          y={y + 12}
+                          width={tableWidth}
+                          height={tableHeight - 12}
+                          align="center"
+                          fill="#ffffff"
+                          listening={false}
+                          text={`${table.tableNumber}\n${table.capacity} ${t("bookingGuestLabel")}${disabled ? ` · ${t(statusLabelKey[table.status])}` : ""}`}
+                          fontStyle="bold"
+                          fontSize={17}
+                          lineHeight={1.3}
+                        />
+                      );
+                    })}
+                  </Layer>
+                </Stage>
+              </div>
+              {(loadingTables || tablesError || displayTables.length === 0) && (
+                <div className="absolute inset-0 flex items-center justify-center bg-[#fdf9f3]/85 p-6 text-center text-sm text-[#7a5a4c]">
+                  {loadingTables ? <Loader2 className="h-6 w-6 animate-spin text-[#713a2e]" /> : (
+                    <span className="flex max-w-xs flex-col items-center gap-2">
+                      <AlertCircle className="h-6 w-6 text-[#b5452f]" />
+                      {tablesError || t("bookingNoTables")}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
-            <Button type="submit" disabled={submitting || selectedTables.length === 0}>
-              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarCheck className="mr-2 h-4 w-4" />}
-              {t("bookingContinue")}
+
+            <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-[#6b5146]">
+              {(["AVAILABLE", "HOLD", "RESERVED"] as TableStatus[]).map((status) => (
+                <span key={status} className="inline-flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: statusColor[status] }} />
+                  {t(statusLabelKey[status])}
+                </span>
+              ))}
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: SELECTED_COLOR }} />
+                {t("bookingSelected")}
+              </span>
+              {!loadingTables && !tablesError && displayTables.length > 0 && (
+                <span className="ml-auto font-medium text-[#2f9e5b]">{availableCount}/{displayTables.length} {t("statusAvailable").toLowerCase()}</span>
+              )}
+            </div>
+          </section>
+
+          <form ref={detailsRef} onSubmit={submitBooking} className="min-w-0 scroll-mt-24 rounded-3xl border border-[#eadcc8] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="details-heading">
+            <h2 id="details-heading" className="mb-4 flex items-center gap-2 text-base font-semibold">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#713a2e] text-xs text-white">2</span>
+              {t("bookingStepDetails")}
+            </h2>
+
+            <div className={cn("mb-4 rounded-2xl border px-4 py-3 text-sm", selectedTables.length ? "border-blue-200 bg-blue-50 text-blue-900" : "border-dashed border-[#e2cdb4] bg-[#fdf9f3] text-[#7a5a4c]")}>
+              <p className="font-semibold">{selectionLabel}</p>
+              <p className="mt-0.5 text-xs opacity-80">{AREAS.find((item) => item.value === area)?.label} · {form.bookingDate} · {form.startTime}–{form.endTime} · {guestCount} {t("bookingGuestLabel")}</p>
+              {selectedTables.length > 0 && selectedCapacity < guestCount && <p className="mt-1 text-xs font-medium text-red-600">{t("bookingNotEnoughSeats")}</p>}
+            </div>
+
+            <div className="grid gap-3.5">
+              <Field label={t("bookingCustomerName")} id="customerName" autoComplete="name" placeholder="Nguyen Van A" value={form.customerName} onChange={(value) => setForm({ ...form, customerName: value })} />
+              <div className="grid gap-3.5 sm:grid-cols-2">
+                <Field label={t("bookingEmail")} id="customerEmail" type="email" autoComplete="email" inputMode="email" placeholder="name@example.com" value={form.customerEmail} onChange={(value) => setForm({ ...form, customerEmail: value })} />
+                <Field label={t("bookingPhone")} id="customerPhone" type="tel" autoComplete="tel" inputMode="tel" placeholder="0912 345 678" value={form.customerPhone} onChange={(value) => setForm({ ...form, customerPhone: value })} />
+              </div>
+              <div>
+                <Label htmlFor="endTime">{t("bookingEndTime")}</Label>
+                <select
+                  id="endTime"
+                  value={form.endTime}
+                  onChange={(event) => setForm({ ...form, endTime: event.target.value })}
+                  className="mt-1.5 h-12 w-full rounded-xl border border-input bg-background px-3 text-base"
+                >
+                  {endSlotsFor(form.startTime).map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="note">{t("bookingNotes")}</Label>
+                <Textarea className="mt-1.5 rounded-xl text-base" id="note" value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} placeholder={t("bookingOptional")} />
+              </div>
+              <p className="rounded-2xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">{t("bookingLargeParty")}</p>
+              <div className={cn("flex items-start gap-3 rounded-2xl border p-3 transition-colors", confirmationError ? "border-destructive bg-destructive/5 ring-1 ring-destructive" : "border-[#eadcc8]")}>
+                <Checkbox
+                  id="informationConfirmed"
+                  checked={informationConfirmed}
+                  aria-invalid={confirmationError}
+                  onCheckedChange={(checked) => {
+                    setInformationConfirmed(checked === true);
+                    if (checked === true) setConfirmationError(false);
+                  }}
+                />
+                <Label htmlFor="informationConfirmed" className={cn("cursor-pointer text-sm leading-5", confirmationError && "text-destructive")}>
+                  {t("bookingConfirmationLabel")} <RequiredMark />
+                </Label>
+              </div>
+              <Button type="submit" disabled={submitting || selectedTables.length === 0} className="h-12 rounded-2xl bg-[#c0392b] text-base font-semibold text-white shadow-lg shadow-[#c0392b]/25 hover:bg-[#a93226]">
+                {submitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CalendarCheck className="mr-2 h-5 w-5" />}
+                {t("bookingContinue")}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {selectedTables.length > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#eadcc8] bg-white/95 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_24px_rgba(60,30,20,0.08)] backdrop-blur lg:hidden">
+          <div className="mx-auto flex max-w-6xl items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">{selectionLabel}</p>
+              <p className="truncate text-xs text-[#7a5a4c]">{form.bookingDate} · {form.startTime}–{form.endTime}</p>
+            </div>
+            <Button type="button" onClick={() => detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} className="h-11 shrink-0 rounded-full bg-[#c0392b] px-4 text-white hover:bg-[#a93226]">
+              {t("bookingContinueShort")}<ArrowRight className="ml-1.5 h-4 w-4" />
             </Button>
           </div>
-        </form>
-      </div>
+        </div>
+      )}
 
       <Dialog open={showPhotos} onOpenChange={setShowPhotos}>
         <DialogContent className="max-w-3xl overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>{areaName} {t("bookingPhotos")}</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>{areaName} {t("bookingPhotos")}</DialogTitle></DialogHeader>
           <Carousel key={area} opts={{ loop: areaImages.length > 1 }} className="mx-auto w-full">
             <CarouselContent>
               {(areaImages.length ? areaImages : ["/placeholder.svg"]).map((src, index) => (
                 <CarouselItem key={`${src}-${index}`}>
-                  <img
-                    src={src}
-                    alt={`${areaName} dining area ${index + 1}`}
-                    className="aspect-[4/3] w-full rounded-md object-cover"
-                  />
+                  <img src={src} alt={`${areaName} dining area ${index + 1}`} className="aspect-[4/3] w-full rounded-xl object-cover" />
                 </CarouselItem>
               ))}
             </CarouselContent>
@@ -585,66 +614,34 @@ export default function Booking() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showSuggestion} onOpenChange={setShowSuggestion}>
-        <DialogContent
-          className="rounded-3xl border-white/70 bg-white/95 shadow-2xl backdrop-blur-xl sm:rounded-3xl"
-          onOpenAutoFocus={(event) => event.preventDefault()}
-        >
-          <DialogHeader><DialogTitle>{t("bookingSuggestBest")}</DialogTitle></DialogHeader>
-          <div className="grid gap-4">
-            <Field label={t("bookingGuests")} id="suggestGuests" type="number" placeholder="2" min="1" max="6" value={suggestForm.numberOfGuests} onChange={(value) => setSuggestForm({ ...suggestForm, numberOfGuests: value })} />
-            <Field label={t("bookingDate")} id="suggestDate" type="date" placeholder="YYYY-MM-DD" min={today} value={suggestForm.bookingDate} onChange={(value) => setSuggestForm({ ...suggestForm, bookingDate: value })} />
-            <div className="grid grid-cols-2 gap-4">
-              <Field label={t("bookingStart")} id="suggestStart" type="time" placeholder="HH:mm" value={suggestForm.startTime} onChange={(value) => setSuggestForm({ ...suggestForm, startTime: value })} />
-              <Field label={t("bookingEnd")} id="suggestEnd" type="time" placeholder="HH:mm" value={suggestForm.endTime} onChange={(value) => setSuggestForm({ ...suggestForm, endTime: value })} />
-            </div>
-            <div>
-              <Label>{t("bookingSeating")} <RequiredMark /></Label>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <Button className="rounded-xl" type="button" variant={suggestForm.seating === "outside" ? "default" : "outline"} onClick={() => setSuggestForm({ ...suggestForm, seating: "outside" })}>{t("bookingOutside")}</Button>
-                <Button className="rounded-xl" type="button" variant={suggestForm.seating === "inside" ? "default" : "outline"} onClick={() => setSuggestForm({ ...suggestForm, seating: "inside" })}>{t("bookingInside")}</Button>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">{suggestForm.seating === "outside" ? t("bookingOutsideHint") : t("bookingInsideHint")}</p>
-            </div>
-            <Button className="h-11 rounded-xl" type="button" onClick={suggestBestTable} disabled={suggesting}>
-              {suggesting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-              {t("bookingFindSuggestion")}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={Boolean(otpSession)} onOpenChange={(open) => !open && setOtpSession(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("bookingVerifyEmail")}</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">{t("bookingOtpInstruction")} {otpSession?.email}. {t("bookingOtpExpires")}</p>
+        <DialogContent className="rounded-3xl">
+          <DialogHeader><DialogTitle>{t("bookingVerifyEmail")}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">{t("bookingOtpInstruction")} <strong>{otpSession?.email}</strong>. {t("bookingOtpExpires")}</p>
           <div>
             <Label htmlFor="bookingOtp">OTP <RequiredMark /></Label>
-            <Input id="bookingOtp" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" maxLength={6} placeholder="123456" required />
+            <Input id="bookingOtp" className="mt-1.5 h-14 rounded-2xl text-center text-2xl font-bold tracking-[0.5em]" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="••••••" required />
           </div>
-          <div className="flex gap-2">
-            <Button onClick={verifyOtp} disabled={otp.length !== 6 || submitting}>{t("bookingVerifyOtp")}</Button>
-            <Button type="button" variant="outline" onClick={resendOtp}>{t("bookingResendOtp")}</Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button className="h-11 rounded-xl bg-[#c0392b] hover:bg-[#a93226]" onClick={verifyOtp} disabled={otp.length !== 6 || submitting}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t("bookingVerifyOtp")}</Button>
+            <Button className="h-11 rounded-xl" type="button" variant="outline" onClick={resendOtp}>{t("bookingResendOtp")}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={Boolean(result)} onOpenChange={(open) => !open && setResult(null)}>
-        <DialogContent>
+        <DialogContent className="rounded-3xl">
           <DialogHeader>
-            <DialogTitle>{t("bookingSuccessTitle")}</DialogTitle>
+            <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><CheckCircle2 className="h-7 w-7" /></div>
+            <DialogTitle className="text-center">{t("bookingSuccessTitle")}</DialogTitle>
           </DialogHeader>
           {result && (
-            <div className="space-y-2 text-sm">
+            <div className="space-y-2 rounded-2xl bg-[#fdf9f3] p-4 text-sm">
               <p><strong>{t("bookingCode")}:</strong> {result.bookingCode}</p>
               <p><strong>{t("bookingCustomerName")}:</strong> {result.customerName}</p>
-              <p><strong>{t("bookingEmail")}:</strong> {result.customerEmail}</p>
-              <p><strong>{t("bookingPhone")}:</strong> {result.customerPhone}</p>
-              <p><strong>{t("bookingArea")}:</strong> {result.area}</p>
+              <p><strong>{t("bookingArea")}:</strong> {AREAS.find((item) => item.value === result.area)?.label}</p>
               <p><strong>{t("bookingTable")}:</strong> {result.tables.map((table) => table.tableNumber).join(", ")}</p>
-              <p><strong>{t("bookingDateTime")}:</strong> {result.bookingDate} {result.startTime} - {result.endTime}</p>
+              <p><strong>{t("bookingDateTime")}:</strong> {result.bookingDate} {result.startTime} – {result.endTime}</p>
               <p><strong>{t("bookingGuests")}:</strong> {result.numberOfGuests}</p>
               <p><strong>{t("bookingStatus")}:</strong> {t("bookingPendingApproval")}</p>
               <p className="pt-2 text-muted-foreground">{t("bookingCheckEmail")}</p>
@@ -653,19 +650,11 @@ export default function Booking() {
         </DialogContent>
       </Dialog>
     </div>
-    </div>
   );
 }
 
 function Field({
-  label,
-  id,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  min,
-  max,
+  label, id, value, onChange, type = "text", placeholder, autoComplete, inputMode,
 }: {
   label: string;
   id: string;
@@ -673,13 +662,13 @@ function Field({
   onChange: (value: string) => void;
   type?: string;
   placeholder?: string;
-  min?: string;
-  max?: string;
+  autoComplete?: string;
+  inputMode?: "email" | "tel" | "text";
 }) {
   return (
     <div>
       <Label htmlFor={id}>{label} <RequiredMark /></Label>
-      <Input className="h-11 rounded-xl" id={id} type={type} placeholder={placeholder} min={min} max={max} value={value} onChange={(event) => onChange(event.target.value)} required />
+      <Input className="mt-1.5 h-12 rounded-xl text-base" id={id} type={type} placeholder={placeholder} autoComplete={autoComplete} inputMode={inputMode} value={value} onChange={(event) => onChange(event.target.value)} required />
     </div>
   );
 }

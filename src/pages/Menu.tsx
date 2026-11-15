@@ -221,7 +221,7 @@ const Menu = () => {
 
 
       {/* Filters Section */}
-      <div className="sticky top-16 z-40 bg-background/95 backdrop-blur-md border-b shadow-sm">
+      <div className="sticky top-16 sm:top-[72px] z-40 bg-background/95 backdrop-blur-md border-b shadow-sm">
         <div className="container mx-auto max-w-6xl px-4 py-4">
 
           {/* Search + Sort Row */}

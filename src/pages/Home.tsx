@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { SiteHeader } from "@/components/SiteHeader";
+import { BookingSearch } from "@/components/BookingSearch";
 import { useBookingCopy } from "@/content/bookingCopy";
 import {
   ArrowDown,
   ArrowUpRight,
   ChevronLeft,
   ChevronRight,
-  Menu as MenuIcon,
-  X,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import useEmblaCarousel from "embla-carousel-react";
@@ -48,7 +48,7 @@ export default function Home() {
   const { language } = useLanguage();
   const t = homeCopy[language];
   const { t: booking } = useBookingCopy();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const navigate = useNavigate();
   const [activeSpace, setActiveSpace] = useState(0);
   const [photo, setPhoto] = useState(0);
   const [carouselPaused, setCarouselPaused] = useState(false);
@@ -135,16 +135,6 @@ export default function Home() {
       ?.setAttribute("content", t.heroBody);
   }, [language, t]);
 
-  useEffect(() => {
-    if (!mobileOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [mobileOpen]);
-
-  const closeNav = () => setMobileOpen(false);
   const money = (item: MenuItem) =>
     new Intl.NumberFormat(homeLocales[language], {
       style: "currency",
@@ -167,65 +157,7 @@ export default function Home() {
       <a className="rtr-skip" href="#main">
         {t.skip}
       </a>
-      <header className="rtr-header">
-        <Link
-          to="/home"
-          className="rtr-brand"
-          aria-label={`Riverside Terrace — ${t.welcome}`}
-        >
-          <img
-            src={`${imageRoot}logo.webp`}
-            alt="Riverside Terrace Restaurant"
-            width="220"
-            height="150"
-          />
-        </Link>
-        <nav className="rtr-desktop-nav" aria-label={t.navigation}>
-          <a href="#story">{t.story}</a>
-          <a href="#signatures">{t.dishes}</a>
-          <a href="#spaces">{t.spaces}</a>
-          <Link to="/booking">{booking("navBooking")}</Link>
-        </nav>
-        <div className="rtr-header-actions">
-          <div className="rtr-language-select">
-            <LanguageSelector />
-          </div>
-          <button
-            className="rtr-nav-toggle"
-            aria-expanded={mobileOpen}
-            aria-controls="home-mobile-nav"
-            aria-label={mobileOpen ? t.closeNav : t.openNav}
-            onClick={() => setMobileOpen(!mobileOpen)}
-          >
-            {mobileOpen ? <X /> : <MenuIcon />}
-          </button>
-        </div>
-        {mobileOpen && (
-          <nav
-            id="home-mobile-nav"
-            className="rtr-mobile-nav"
-            aria-label={t.navigation}
-          >
-            <a href="#story" onClick={closeNav}>
-              {t.story}
-            </a>
-            <a href="#signatures" onClick={closeNav}>
-              {t.dishes}
-            </a>
-            <a href="#spaces" onClick={closeNav}>
-              {t.spaces}
-            </a>
-            <Link to="/menu">
-              {t.menu}
-              <ArrowUpRight size={22} />
-            </Link>
-            <Link to="/booking">
-              {booking("homeBook")}
-              <ArrowUpRight size={22} />
-            </Link>
-          </nav>
-        )}
-      </header>
+      <SiteHeader />
 
       <main id="main">
         <section className="rtr-hero" aria-labelledby="hero-title">
@@ -254,9 +186,17 @@ export default function Home() {
               ))}
             </h1>
             <p>{t.heroBody}</p>
-            <Link to="/menu" className="rtr-button rtr-button-light">
+            <div className="rtr-hero-booking">
+              <p className="rtr-hero-booking-title">{booking("heroBookTitle")}</p>
+              <BookingSearch
+                variant="hero"
+                onSubmit={({ date, time, guests }) => navigate(`/booking?${new URLSearchParams({ date, time, guests: String(guests), find: "1" })}`)}
+              />
+              <p className="rtr-hero-booking-hint">{booking("heroBookHint")}</p>
+            </div>
+            <Link to="/menu" className="rtr-hero-menu-link">
               {t.discoverMenu}
-              <ArrowUpRight size={19} />
+              <ArrowUpRight size={17} />
             </Link>
           </div>
           <div className="rtr-hero-bottom">
@@ -542,8 +482,8 @@ export default function Home() {
       </footer>
       <div className="rtr-mobile-cta">
         <span>{t.mobileCta}</span>
-        <Link to="/menu">
-          {t.menu}
+        <Link to="/booking">
+          {booking("homeBook")}
           <ArrowUpRight size={17} />
         </Link>
       </div>

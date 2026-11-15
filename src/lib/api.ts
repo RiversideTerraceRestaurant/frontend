@@ -24,10 +24,13 @@ const query = (values: Record<string, string | number>) => new URLSearchParams(O
 
 export interface Session { user: { id: string; email: string } | null; isAdmin: boolean }
 export interface Preferences { diet: 'any' | 'vegetarian' | 'vegan' | 'gluten_free' | 'dairy_free'; maxPrice: number | null; mild: boolean; avoid: string[] }
-export type ChatAction = 'chat' | 'suggest' | 'popular' | 'vegetarian' | 'mild';
+export type ChatAction = 'chat' | 'suggest' | 'popular' | 'vegetarian' | 'mild' | 'availability';
+export interface ChatBookingRequest { date?: string; time?: string; guests?: number; seating?: 'inside' | 'outside' }
+export interface ChatBookingOption { area: 'TERRACE' | 'ROMA' | 'VERONA' | 'SORRENTO'; label: string; freeCount: number; tables: { id: number; tableNumber: string }[] }
+export interface ChatBooking { date: string; time: string; endTime: string; guests: number; seating: 'inside' | 'outside' | null; options: ChatBookingOption[]; nextDate: string | null }
 export interface ChatMessage { role: 'user' | 'assistant'; content: string }
 export interface AppliedChatFilters { diets: Exclude<Preferences['diet'], 'any'>[]; maxPrice: number | null; mild: boolean; avoid: string[]; alcohol: 'any' | 'none' | 'alcoholic' }
-export interface ChatReply { appliedFilters?: AppliedChatFilters; language?: Language; conversationId?: string; reply: string; items: (MenuItem & { price_with_vat: number })[]; mode: 'ai' | 'filters' | 'unavailable'; sources?: { id: string; title: string }[] }
+export interface ChatReply { appliedFilters?: AppliedChatFilters; language?: Language; conversationId?: string; reply: string; items: (MenuItem & { price_with_vat: number })[]; mode: 'ai' | 'filters' | 'unavailable' | 'booking'; sources?: { id: string; title: string }[]; booking?: ChatBooking | null }
 export interface KnowledgeDocument { content: string; version: string }
 export interface MaintenanceJob { id: string; status: 'running' | 'complete' | 'failed'; current: number; total: number; updated: number; skipped: number; errors: string[] }
 export interface Analytics { totalViews: number; todayViews: number; trackingAvailable: boolean; topItems: { menu_item_id: string; name: string; view_count: number }[] }
@@ -53,5 +56,5 @@ export const api = {
   uploadImage: (file: File) => request<{ imageUrl: string; thumbnailUrl: string }>('/admin/images', { method: 'POST', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream' } }),
   startJob: (type: 'optimize' | 'auto-fix') => request<MaintenanceJob>('/admin/jobs', json('POST', { type })),
   job: (id: string, signal?: AbortSignal) => request<MaintenanceJob>(`/admin/jobs/${encodeURIComponent(id)}`, { signal }),
-  chat: (messages: ChatMessage[], language: Language, preferences: Preferences, action: ChatAction, signal?: AbortSignal, context: 'home' | 'menu' = 'menu', conversationId?: string) => request<ChatReply>('/chat', { ...json('POST', { messages, language, preferences, action, context, conversationId }), signal }),
+  chat: (messages: ChatMessage[], language: Language, preferences: Preferences, action: ChatAction, signal?: AbortSignal, context: 'home' | 'menu' = 'menu', conversationId?: string, booking?: ChatBookingRequest) => request<ChatReply>('/chat', { ...json('POST', { messages, language, preferences, action, context, conversationId, booking }), signal }),
 };
