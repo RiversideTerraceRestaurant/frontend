@@ -71,8 +71,9 @@ export function TablePhotoViewerHost() {
     <DialogPrimitive.Root open={open} onOpenChange={(value) => !value && close()}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+        {/* Centred with inset/margin instead of translate(-50%), so the zoom-in animation does not slide in from a corner. */}
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-[60] w-[calc(100%-1.5rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[28px] bg-[#17110e] text-white shadow-2xl outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+          className="fixed inset-0 z-[60] m-auto h-fit w-[calc(100%-1.5rem)] max-w-3xl overflow-hidden rounded-[28px] bg-[#17110e] text-white shadow-2xl outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:duration-200"
           aria-describedby={undefined}
         >
           {open && <TablePhotoViewer ids={ids} />}
@@ -141,10 +142,10 @@ function TablePhotoViewer({ ids }: { ids: number[] }) {
             </Carousel>
             {tables.length > 1 && (
               <>
-                <button type="button" onClick={() => api?.scrollPrev()} disabled={index === 0} className="absolute left-5 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur transition hover:bg-black/65 disabled:opacity-0 sm:flex" aria-label={t("tablePhotosPrevious")}>
+                <button type="button" onClick={() => api?.scrollPrev()} disabled={index === 0} className="absolute left-7 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur transition hover:bg-black/65 disabled:opacity-0 sm:flex" aria-label={t("tablePhotosPrevious")}>
                   <ChevronLeft className="h-5 w-5" />
                 </button>
-                <button type="button" onClick={() => api?.scrollNext()} disabled={index >= tables.length - 1} className="absolute right-5 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur transition hover:bg-black/65 disabled:opacity-0 sm:flex" aria-label={t("tablePhotosNext")}>
+                <button type="button" onClick={() => api?.scrollNext()} disabled={index >= tables.length - 1} className="absolute right-7 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur transition hover:bg-black/65 disabled:opacity-0 sm:flex" aria-label={t("tablePhotosNext")}>
                   <ChevronRight className="h-5 w-5" />
                 </button>
               </>
