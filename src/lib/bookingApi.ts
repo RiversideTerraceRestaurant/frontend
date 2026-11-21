@@ -57,6 +57,8 @@ function availabilityStartTime(date: string, startTime: string) {
 }
 
 export const publicBookingApi = {
+  /** Every active table with its photo (used by the shared table photo viewer). */
+  allTables: () => request<RestaurantTable[]>("/reservations/tables"),
   tablesByArea: (area: RestaurantArea) => request<RestaurantTable[]>(`/reservations/tables${search({ area })}`),
   availability: (params: { area: RestaurantArea; date: string; startTime: string; endTime: string; guests: number }) =>
     request<RestaurantTable[]>(`/reservations/availability${search({
@@ -111,4 +113,8 @@ export const adminBookingApi = {
       note: booking.note,
     })).then(notifyBookingsChanged),
   tables: (area?: RestaurantArea) => request<RestaurantTable[]>(`/admin/tables${search(area ? { area } : {})}`),
+  /** Uploads (or replaces) the one photo of a table; the server converts it to WebP and stores it on Cloudinary. */
+  uploadTablePhoto: (id: number, file: File) =>
+    request<RestaurantTable>(`/admin/tables/${id}/photo`, { method: "POST", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } }),
+  removeTablePhoto: (id: number) => request<RestaurantTable>(`/admin/tables/${id}/photo`, json("DELETE")),
 };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { CalendarCheck, ExternalLink, LogOut, UtensilsCrossed } from "lucide-react";
+import { CalendarCheck, ExternalLink, Images, LogOut, UtensilsCrossed } from "lucide-react";
 import { api } from "@/lib/api";
 import { adminBookingApi } from "@/lib/bookingApi";
 import { useBookingRealtime } from "@/hooks/use-booking-realtime";
@@ -10,7 +10,7 @@ import { PushToggle } from "@/components/admin/PushToggle";
 
 export interface AdminOutletContext { pendingCount: number }
 
-/** Shared admin shell: checks the admin session and switches between Booking and Menu. */
+/** Shared admin shell: checks the admin session and switches between Booking, Menu and Tables. */
 export default function AdminLayout() {
   const [state, setState] = useState<"loading" | "ready">("loading");
   const [pendingCount, setPendingCount] = useState(0);
@@ -60,6 +60,7 @@ export default function AdminLayout() {
   const sections = [
     { to: "/admin/booking", label: "Booking", icon: CalendarCheck, badge: pendingCount },
     { to: "/admin/menu", label: "Menu", icon: UtensilsCrossed, badge: 0 },
+    { to: "/admin/tables", label: "Tables", icon: Images, badge: 0 },
   ];
   const timeMap = location.pathname === "/admin/booking";
 
@@ -77,15 +78,21 @@ export default function AdminLayout() {
                 key={to}
                 to={to}
                 className={({ isActive }) => cn(
-                  "relative flex h-9 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold transition sm:gap-2 sm:px-5",
+                  "relative flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold transition sm:gap-2 sm:px-5",
                   isActive ? "bg-[#713a2e] text-white shadow-sm" : "text-[#5b3a2e] hover:bg-white/70",
                 )}
               >
-                <Icon className="h-4 w-4" />{label}
-                {badge > 0 && (
-                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-[10px] font-bold leading-5 text-white" aria-label={`${badge} pending`}>
-                    {badge > 99 ? "99+" : badge}
-                  </span>
+                {({ isActive }) => (
+                  <>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {/* Phones show only the active section's name so three sections fit beside the logo. */}
+                    <span className={cn(!isActive && "sr-only sm:not-sr-only")}>{label}</span>
+                    {badge > 0 && (
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-[10px] font-bold leading-5 text-white" aria-label={`${badge} pending`}>
+                        {badge > 99 ? "99+" : badge}
+                      </span>
+                    )}
+                  </>
                 )}
               </NavLink>
             ))}

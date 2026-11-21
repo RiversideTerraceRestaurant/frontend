@@ -1,5 +1,5 @@
 import { Layer, Rect, Stage, Text } from "react-konva";
-import { AlertCircle, CalendarCheck, CheckCircle2, ImageIcon, Loader2, RefreshCw, Sun, Home as HomeIcon, Shuffle } from "lucide-react";
+import { AlertCircle, CalendarCheck, Camera, CheckCircle2, Clock, ImageIcon, ImageOff, Loader2, RefreshCw, Sun, Home as HomeIcon, Shuffle } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { BookingSearch, type BookingSearchValue } from "@/components/BookingSearch";
 import { MAX_ONLINE_GUESTS, defaultEndFor, endSlotsFor, normaliseSearch, restaurantNow } from "@/lib/bookingSlots";
 import { cn } from "@/lib/utils";
+import { useTablePhotos } from "@/components/TablePhotoViewer";
 
 const statusColor: Record<TableStatus, string> = {
   AVAILABLE: "#2f9e5b",
@@ -64,6 +65,7 @@ export default function Booking() {
   const [canvasContainerWidth, setCanvasContainerWidth] = useState(520);
   const { toast } = useToast();
   const { t } = useBookingCopy();
+  const openTablePhotos = useTablePhotos();
   const areaName = AREAS.find((item) => item.value === area)?.label as keyof typeof AREA_PHOTOS;
   const areaImages = AREA_PHOTOS[areaName] ?? [];
 
@@ -527,6 +529,27 @@ export default function Booking() {
                 <span className="ml-auto font-medium text-[#2f9e5b]">{availableCount}/{displayTables.length} {t("statusAvailable").toLowerCase()}</span>
               )}
             </div>
+
+            {selectedTables.length > 0 && (
+              <button
+                type="button"
+                onClick={() => openTablePhotos(selectedTables.map((table) => table.id), selectedTables)}
+                className="mt-3 flex min-h-12 w-full items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2 text-left text-blue-950 transition hover:border-blue-300 hover:bg-blue-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <span className="flex -space-x-2">
+                  {selectedTables.slice(0, 3).map((table) => (
+                    <span key={table.id} className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-blue-200/70 ring-2 ring-blue-50">
+                      {table.imageUrl ? <img src={table.imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" /> : <ImageOff className="h-4 w-4 text-blue-700/70" />}
+                    </span>
+                  ))}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold">{t("tablePhotosButton")}</span>
+                  <span className="block truncate text-xs text-blue-900/70">{t("tablePhotosTitle")} · {selectedTables.map((table) => table.tableNumber).join(", ")}</span>
+                </span>
+                <Camera className="h-5 w-5 shrink-0 text-blue-700" />
+              </button>
+            )}
           </section>
 
           <form onSubmit={submitBooking} className="min-w-0 scroll-mt-24 rounded-3xl border border-[#eadcc8] bg-white p-4 shadow-sm sm:p-5" aria-labelledby="details-heading">
@@ -562,7 +585,10 @@ export default function Booking() {
                 <Label htmlFor="note">{t("bookingNotes")}</Label>
                 <Textarea className="mt-1.5 rounded-xl text-base" id="note" value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} placeholder={t("bookingOptional")} />
               </div>
-              <p className="rounded-2xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">{t("bookingLargeParty")}</p>
+              <div className="space-y-1.5 rounded-2xl bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900">
+                <p className="flex gap-2 font-medium"><Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />{t("bookingNoShowNotice")}</p>
+                <p className="pl-[22px]">{t("bookingLargeParty")}</p>
+              </div>
               <div className={cn("flex items-start gap-3 rounded-2xl border p-3 transition-colors", confirmationError ? "border-destructive bg-destructive/5 ring-1 ring-destructive" : "border-[#eadcc8]")}>
                 <Checkbox
                   id="informationConfirmed"
@@ -623,7 +649,7 @@ export default function Booking() {
       </Dialog>
 
       <Dialog open={Boolean(result)} onOpenChange={(open) => !open && setResult(null)}>
-        <DialogContent className="rounded-3xl">
+        <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-3xl">
           <DialogHeader>
             <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"><CheckCircle2 className="h-7 w-7" /></div>
             <DialogTitle className="text-center">{t("bookingSuccessTitle")}</DialogTitle>
@@ -639,6 +665,34 @@ export default function Booking() {
               <p><strong>{t("bookingStatus")}:</strong> {t("bookingPendingApproval")}</p>
               <p className="pt-2 text-muted-foreground">{t("bookingCheckEmail")}</p>
             </div>
+          )}
+          {result && result.tables.length > 0 && (
+            <button
+              type="button"
+              onClick={() => openTablePhotos(result.tables.map((table) => table.id), result.tables)}
+              className="group w-full overflow-hidden rounded-2xl border border-[#eadcc8] bg-white text-left transition hover:border-[#c9a98c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#713a2e]"
+            >
+              <span className="grid h-28 gap-0.5" style={{ gridTemplateColumns: `repeat(${Math.min(result.tables.length, 3)}, minmax(0, 1fr))` }}>
+                {result.tables.slice(0, 3).map((table) => (
+                  <span key={table.id} className="relative flex items-center justify-center overflow-hidden bg-[#f3e8dc]">
+                    {table.imageUrl ? <img src={table.imageUrl} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" /> : <ImageOff className="h-6 w-6 text-[#b8957d]" />}
+                    <span className="absolute bottom-1.5 left-1.5 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white">{table.tableNumber}</span>
+                  </span>
+                ))}
+              </span>
+              <span className="flex items-center justify-between gap-2 px-4 py-3">
+                <span>
+                  <span className="block text-sm font-semibold text-[#2b1d17]">{t("bookingSeeYourTable")}</span>
+                  <span className="block text-xs text-[#7a5a4c]">{t("tablePhotosTitle")}</span>
+                </span>
+                <Camera className="h-5 w-5 shrink-0 text-[#713a2e]" />
+              </span>
+            </button>
+          )}
+          {result && (
+            <p className="flex gap-2 rounded-2xl bg-amber-50 px-3 py-2.5 text-xs font-medium leading-5 text-amber-900">
+              <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />{t("bookingNoShowNotice")}
+            </p>
           )}
         </DialogContent>
       </Dialog>

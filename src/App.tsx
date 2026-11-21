@@ -15,9 +15,11 @@ const Booking = lazy(() => import("./pages/Booking"));
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
 const AdminBookingPage = lazy(() => import("./pages/admin/AdminBookingPage"));
 const AdminMenuPage = lazy(() => import("./pages/admin/AdminMenuPage"));
+const AdminTablesPage = lazy(() => import("./pages/admin/AdminTablesPage"));
 const pageFallback = <div className="min-h-screen" />;
 import NotFound from "./pages/NotFound";
 import { ChatWidget } from "@/components/ChatWidget";
+import { TablePhotoViewerHost } from "@/components/TablePhotoViewer";
 
 const queryClient = new QueryClient();
 
@@ -39,11 +41,13 @@ const App = () => (
               <Route path="/admin/booking" element={<Suspense fallback={pageFallback}><AdminBookingPage /></Suspense>} />
               <Route path="/admin/booking/list" element={<Suspense fallback={pageFallback}><AdminBookingPage /></Suspense>} />
               <Route path="/admin/menu" element={<Suspense fallback={pageFallback}><AdminMenuPage /></Suspense>} />
+              <Route path="/admin/tables" element={<Suspense fallback={pageFallback}><AdminTablesPage /></Suspense>} />
             </Route>
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
           <ChatWidget />
+          <TablePhotoViewerHost />
         </BrowserRouter>
       </TooltipProvider>
     </LanguageProvider>

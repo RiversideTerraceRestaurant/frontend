@@ -6,6 +6,7 @@ import {
   Ban,
   CalendarCheck,
   CalendarDays,
+  Camera,
   ChefHat,
   Clock3,
   Flame,
@@ -28,6 +29,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useTablePhotos } from "@/components/TablePhotoViewer";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   api,
@@ -102,6 +104,7 @@ export function ChatWidget() {
   const { language, setLanguage } = useLanguage();
   const location = useLocation();
   const navigate = useNavigate();
+  const openTablePhotos = useTablePhotos();
   const restaurant = location.pathname !== "/menu";
   const r = restaurantChatCopy[language];
   const { t: tb } = useBookingCopy();
@@ -580,7 +583,7 @@ export function ChatWidget() {
                     {message.booking && (
                       <div className="mt-2 space-y-2">
                         {message.booking.options.map((option) => (
-                          <div key={option.area} className="rtr-ai-dish flex items-center gap-3 rounded-2xl border p-2.5">
+                          <div key={option.area} className="rtr-ai-dish flex items-center gap-2 rounded-2xl border p-2.5 sm:gap-3">
                             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-lg font-bold text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200" title={`${option.freeCount} ${tb("statusAvailable")}`}>
                               {option.freeCount}
                             </div>
@@ -588,6 +591,15 @@ export function ChatWidget() {
                               <p className="text-sm font-semibold">{option.label}</p>
                               <p className="rtr-ai-muted truncate text-xs">{option.freeCount} {tb("statusAvailable").toLowerCase()} · {option.tables.map((table) => table.tableNumber).join(" + ")} · {message.booking!.time}</p>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => openTablePhotos(option.tables.map((table) => table.id))}
+                              className="rtr-ai-dish-arrow rtr-ai-composer-tool flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                              aria-label={`${tb("tablePhotosButton")} ${option.tables.map((table) => table.tableNumber).join(", ")}`}
+                              title={tb("tablePhotosButton")}
+                            >
+                              <Camera className="h-4 w-4" />
+                            </button>
                             <button
                               onClick={() => openBooking(message.booking!, option)}
                               className="rtr-ai-cta min-h-9 shrink-0 rounded-full px-3.5 text-xs font-semibold"
