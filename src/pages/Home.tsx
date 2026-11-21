@@ -102,7 +102,6 @@ export default function Home() {
   });
 
   useEffect(() => {
-    window.scrollTo(0, 0);
     void api.pageView("/home").catch(() => undefined);
     const observer = new IntersectionObserver(
       (entries) =>

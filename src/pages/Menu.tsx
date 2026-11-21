@@ -48,7 +48,6 @@ const Menu = () => {
     setCurrentPage(1);
   }, [requestedItem, searchParams]);
   useEffect(() => {
-    window.scrollTo(0, 0);
     document.title = "Menu | Riverside Terrace Restaurant";
   }, []);
   useEffect(() => {

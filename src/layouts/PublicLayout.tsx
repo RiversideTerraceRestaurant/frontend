@@ -13,7 +13,8 @@ export default function PublicLayout() {
   const { pathname } = useLocation();
 
   // New page → start at the top before paint (query-only changes such as ?tablePhotos keep the scroll).
-  useLayoutEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  // "instant" overrides the home page's smooth scrolling, which otherwise animated the jump.
+  useLayoutEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [pathname]);
 
   // Fetch the booking page in the background so the first tap on "Booking" is instant.
   useEffect(() => {
