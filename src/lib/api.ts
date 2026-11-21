@@ -26,8 +26,18 @@ export interface Session { user: { id: string; email: string } | null; isAdmin: 
 export interface Preferences { diet: 'any' | 'vegetarian' | 'vegan' | 'gluten_free' | 'dairy_free'; maxPrice: number | null; mild: boolean; avoid: string[] }
 export type ChatAction = 'chat' | 'suggest' | 'popular' | 'vegetarian' | 'mild' | 'availability';
 export interface ChatBookingRequest { date?: string; time?: string; guests?: number; seating?: 'inside' | 'outside' }
-export interface ChatBookingOption { area: 'TERRACE' | 'ROMA' | 'VERONA' | 'SORRENTO'; label: string; freeCount: number; tables: { id: number; tableNumber: string }[] }
-export interface ChatBooking { date: string; time: string; endTime: string; guests: number; seating: 'inside' | 'outside' | null; options: ChatBookingOption[]; nextDate: string | null }
+/** RTR AI booking answer: a link to the booking page (up to maxOnlineGuests) or the restaurant's contacts for larger groups. */
+export interface ChatBooking {
+  kind: 'online' | 'contact';
+  guests?: number;
+  maxOnlineGuests: number;
+  /** Booking page query (date, time, guests, seating) taken from the guest's message. */
+  query?: Record<string, string | number>;
+  whatsapp: string;
+  phone: string;
+  phoneLabel: string;
+  email: string;
+}
 export interface ChatMessage { role: 'user' | 'assistant'; content: string }
 export interface AppliedChatFilters { diets: Exclude<Preferences['diet'], 'any'>[]; maxPrice: number | null; mild: boolean; avoid: string[]; alcohol: 'any' | 'none' | 'alcoholic' }
 export interface ChatReply { appliedFilters?: AppliedChatFilters; language?: Language; conversationId?: string; reply: string; items: (MenuItem & { price_with_vat: number })[]; mode: 'ai' | 'filters' | 'unavailable' | 'booking'; sources?: { id: string; title: string }[]; booking?: ChatBooking | null }

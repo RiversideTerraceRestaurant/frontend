@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { CalendarCheck, LayoutDashboard, LogIn, LogOut, Menu as MenuIcon, X } from "lucide-react";
 import { api, type Session } from "@/lib/api";
@@ -6,11 +6,17 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { useBookingCopy } from "@/content/bookingCopy";
 import { cn } from "@/lib/utils";
 
-/** One header for every public page (home, menu, booking). */
+// Last known session, so a remounted header renders the right buttons at once instead of
+// flashing "log in" and then swapping (which shifted the header).
+let knownUser: Session["user"] | undefined;
+
+/** One header for every public page (home, menu, booking), rendered once by PublicLayout. */
 export function SiteHeader({ className }: { className?: string }) {
   const { t } = useBookingCopy();
-  const [user, setUser] = useState<Session["user"]>(null);
+  const [user, setUserState] = useState<Session["user"] | undefined>(knownUser);
+  const setUser = (value: Session["user"]) => { knownUser = value; setUserState(value); };
   const [open, setOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -25,8 +31,11 @@ export function SiteHeader({ className }: { className?: string }) {
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    // The menu overlays the page; tapping anywhere outside the header closes it.
+    const onPointer = (event: PointerEvent) => { if (!headerRef.current?.contains(event.target as Node)) setOpen(false); };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointer);
+    return () => { window.removeEventListener("keydown", onKey); document.removeEventListener("pointerdown", onPointer); };
   }, [open]);
 
   const logout = async () => {
@@ -46,7 +55,7 @@ export function SiteHeader({ className }: { className?: string }) {
     );
 
   return (
-    <header className={cn("sticky top-0 z-50 border-b border-[#e6d6c2] bg-[#faf5ec]/90 backdrop-blur-md supports-[backdrop-filter]:bg-[#faf5ec]/75", className)}>
+    <header ref={headerRef} className={cn("sticky top-0 z-50 border-b border-[#e6d6c2] bg-[#faf5ec]/90 backdrop-blur-md supports-[backdrop-filter]:bg-[#faf5ec]/75", className)}>
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:h-[72px] sm:px-6">
         <Link to="/home" className="flex shrink-0 items-center gap-3" aria-label="Riverside Terrace — Home">
           <span className="block h-11 w-[66px] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-[#e6d6c2] sm:h-12 sm:w-[72px]">
@@ -75,6 +84,8 @@ export function SiteHeader({ className }: { className?: string }) {
                 <LogOut className="h-4 w-4" />
               </button>
             </div>
+          ) : user === undefined ? (
+            <span className="hidden h-10 w-10 md:block" aria-hidden="true" />
           ) : (
             <button onClick={() => navigate("/auth")} className="hidden h-10 w-10 items-center justify-center rounded-full text-[#4a2f26] hover:bg-[#713a2e]/10 md:flex" aria-label={t("navLogin")} title={t("navLogin")}>
               <LogIn className="h-4 w-4" />
@@ -96,7 +107,7 @@ export function SiteHeader({ className }: { className?: string }) {
       </div>
 
       {open && (
-        <div id="site-mobile-menu" className="border-t border-[#e6d6c2] bg-[#faf5ec] px-4 pb-5 pt-3 shadow-lg md:hidden">
+        <div id="site-mobile-menu" className="absolute inset-x-0 top-full max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-t border-[#e6d6c2] bg-[#faf5ec] px-4 pb-5 pt-3 shadow-lg md:hidden">
           <nav className="grid gap-1" aria-label="Main">
             {links.map((link) => (
               <NavLink key={link.to} to={link.to} className={({ isActive }) => cn("rounded-2xl px-4 py-3 text-base font-medium", isActive ? "bg-[#713a2e] !text-white" : "!text-[#4a2f26] active:bg-[#713a2e]/10")}>

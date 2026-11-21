@@ -9,6 +9,11 @@ html, body {
   background: transparent !important;
 }
 
+/* Reserve the scrollbar's width so short and long pages line up and the header does not shift sideways. */
+html {
+  scrollbar-gutter: stable;
+}
+
 /* Booking floor maps: let the page scroll vertically through the Konva canvas. */
 .table-map-touch,
 .table-map-touch .konvajs-content,

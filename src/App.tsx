@@ -9,9 +9,11 @@ import Home from "./pages/Home";
 import Auth from "./pages/Auth";
 import { lazy, Suspense } from "react";
 import { AdminIndexRedirect } from "./pages/admin/AdminLayout";
+import PublicLayout from "./layouts/PublicLayout";
+import { loadBookingPage } from "@/lib/pageLoaders";
 
 // Konva (table maps) is only needed on booking pages, so load them on demand.
-const Booking = lazy(() => import("./pages/Booking"));
+const Booking = lazy(loadBookingPage);
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
 const AdminBookingPage = lazy(() => import("./pages/admin/AdminBookingPage"));
 const AdminMenuPage = lazy(() => import("./pages/admin/AdminMenuPage"));
@@ -32,9 +34,12 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Navigate to="/home" replace />} />
-            <Route path="/home" element={<Home />} />
-            <Route path="/menu" element={<Menu />} />
-            <Route path="/booking" element={<Suspense fallback={<div className="min-h-screen" />}><Booking /></Suspense>} />
+            {/* Public pages share one persistent header (see PublicLayout). */}
+            <Route element={<PublicLayout />}>
+              <Route path="/home" element={<Home />} />
+              <Route path="/menu" element={<Menu />} />
+              <Route path="/booking" element={<Booking />} />
+            </Route>
             <Route path="/auth" element={<Auth />} />
             <Route path="/admin" element={<AdminIndexRedirect />} />
             <Route element={<Suspense fallback={pageFallback}><AdminLayout /></Suspense>}>

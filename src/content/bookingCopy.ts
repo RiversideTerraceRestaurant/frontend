@@ -1227,6 +1227,98 @@ Object.assign(copy.it, {
   bookingNoShowNotice: "Teniamo il tavolo per 15 minuti dall'orario della prenotazione. Se non arrivi entro quel tempo, la prenotazione viene annullata automaticamente.",
 });
 
+// RTR AI booking card (link for small parties, contacts for large groups).
+Object.assign(copy.en, {
+  chatBookTable: "Book a table",
+  chatBookOnline: "Book online",
+  chatBookOnlineHint: "Up to {max} guests · confirm by email",
+  chatBookNow: "Book now",
+  chatLargeGroup: "Group of more than {max}? Contact us:",
+  chatContactTitle: "Contact the restaurant",
+  chatContactHint: "Online booking is for up to {max} guests. Message or email us and we will arrange seating for your group.",
+});
+Object.assign(copy.vi, {
+  chatBookTable: "Đặt bàn",
+  chatBookOnline: "Đặt bàn online",
+  chatBookOnlineHint: "Tối đa {max} khách · xác nhận qua email",
+  chatBookNow: "Đặt bàn ngay",
+  chatLargeGroup: "Nhóm trên {max} khách? Liên hệ nhà hàng:",
+  chatContactTitle: "Liên hệ nhà hàng",
+  chatContactHint: "Đặt online áp dụng cho tối đa {max} khách. Nhắn WhatsApp hoặc gửi email, nhà hàng sẽ sắp xếp chỗ cho nhóm của bạn.",
+});
+Object.assign(copy.ko, {
+  chatBookTable: "테이블 예약",
+  chatBookOnline: "온라인 예약",
+  chatBookOnlineHint: "최대 {max}명 · 이메일 확인",
+  chatBookNow: "지금 예약",
+  chatLargeGroup: "{max}명 초과 단체는 문의해 주세요:",
+  chatContactTitle: "레스토랑에 문의",
+  chatContactHint: "온라인 예약은 최대 {max}명까지입니다. 메시지나 이메일을 주시면 단체석을 준비해 드립니다.",
+});
+Object.assign(copy.ja, {
+  chatBookTable: "席を予約",
+  chatBookOnline: "オンライン予約",
+  chatBookOnlineHint: "最大{max}名 · メールで確認",
+  chatBookNow: "今すぐ予約",
+  chatLargeGroup: "{max}名を超える場合はお問い合わせください：",
+  chatContactTitle: "お店に問い合わせ",
+  chatContactHint: "オンライン予約は最大{max}名までです。メッセージまたはメールでご連絡いただければお席をご用意します。",
+});
+Object.assign(copy.cn, {
+  chatBookTable: "预订餐桌",
+  chatBookOnline: "在线订位",
+  chatBookOnlineHint: "最多{max}人 · 邮件确认",
+  chatBookNow: "立即预订",
+  chatLargeGroup: "超过{max}人？请联系我们：",
+  chatContactTitle: "联系餐厅",
+  chatContactHint: "在线订位最多{max}人。请通过消息或邮件联系我们，我们会为您的团体安排座位。",
+});
+Object.assign(copy.ru, {
+  chatBookTable: "Забронировать",
+  chatBookOnline: "Бронирование онлайн",
+  chatBookOnlineHint: "До {max} гостей · подтверждение по email",
+  chatBookNow: "Забронировать",
+  chatLargeGroup: "Больше {max} человек? Свяжитесь с нами:",
+  chatContactTitle: "Связаться с рестораном",
+  chatContactHint: "Онлайн-бронирование — до {max} гостей. Напишите нам, и мы подготовим места для вашей группы.",
+});
+Object.assign(copy.kz, {
+  chatBookTable: "Үстел брондау",
+  chatBookOnline: "Онлайн брондау",
+  chatBookOnlineHint: "{max} қонаққа дейін · email арқылы растау",
+  chatBookNow: "Қазір брондау",
+  chatLargeGroup: "{max} адамнан көп пе? Бізге хабарласыңыз:",
+  chatContactTitle: "Мейрамханаға хабарласу",
+  chatContactHint: "Онлайн брондау {max} қонаққа дейін. Бізге жазыңыз, тобыңызға орын дайындаймыз.",
+});
+Object.assign(copy.es, {
+  chatBookTable: "Reservar mesa",
+  chatBookOnline: "Reservar online",
+  chatBookOnlineHint: "Hasta {max} personas · confirmación por email",
+  chatBookNow: "Reservar ahora",
+  chatLargeGroup: "¿Más de {max} personas? Contáctanos:",
+  chatContactTitle: "Contactar con el restaurante",
+  chatContactHint: "La reserva online es para un máximo de {max} personas. Escríbenos y prepararemos las mesas para tu grupo.",
+});
+Object.assign(copy.fr, {
+  chatBookTable: "Réserver une table",
+  chatBookOnline: "Réserver en ligne",
+  chatBookOnlineHint: "Jusqu'à {max} personnes · confirmation par email",
+  chatBookNow: "Réserver",
+  chatLargeGroup: "Plus de {max} personnes ? Contactez-nous :",
+  chatContactTitle: "Contacter le restaurant",
+  chatContactHint: "La réservation en ligne est limitée à {max} personnes. Écrivez-nous et nous organiserons votre table.",
+});
+Object.assign(copy.it, {
+  chatBookTable: "Prenota un tavolo",
+  chatBookOnline: "Prenota online",
+  chatBookOnlineHint: "Fino a {max} persone · conferma via email",
+  chatBookNow: "Prenota ora",
+  chatLargeGroup: "Più di {max} persone? Contattaci:",
+  chatContactTitle: "Contatta il ristorante",
+  chatContactHint: "La prenotazione online è per massimo {max} persone. Scrivici e prepareremo i tavoli per il tuo gruppo.",
+});
+
 export function useBookingCopy() {
   const { language } = useLanguage();
   const t = useCallback((key: string) => copy[language]?.[key] || copy.en[key] || key, [language]);

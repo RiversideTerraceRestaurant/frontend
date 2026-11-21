@@ -14,7 +14,6 @@ import { MenuItemCard } from "@/components/MenuItemCard";
 import { MobileMenuItemCard } from "@/components/MobileMenuItemCard";
 import { CategoryScroller } from "@/components/CategoryScroller";
 import { MenuItemDetailModal } from "@/components/MenuItemDetailModal";
-import { Navigation } from "@/components/Navigation";
 import { Snowfall } from "@/components/Snowfall";
 import {
   Pagination,
@@ -171,7 +170,6 @@ const Menu = () => {
       {/* Full Page Snowfall Effect */}
 
       
-      <Navigation />
       <div
         ref={heroRef}
         className="hero-section relative w-full h-[120px] md:h-[155px] lg:h-[180px] overflow-hidden z-0"

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { SiteHeader } from "@/components/SiteHeader";
 import { BookingSearch } from "@/components/BookingSearch";
 import { useBookingCopy } from "@/content/bookingCopy";
 import {
@@ -157,7 +156,6 @@ export default function Home() {
       <a className="rtr-skip" href="#main">
         {t.skip}
       </a>
-      <SiteHeader />
 
       <main id="main">
         <section className="rtr-hero" aria-labelledby="hero-title">

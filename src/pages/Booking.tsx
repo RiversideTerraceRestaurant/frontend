@@ -14,7 +14,6 @@ import { AREAS, ApiError, publicBookingApi as publicApi } from "@/lib/bookingApi
 import { Booking as BookingResult, RequestOtpResponse, RestaurantArea, RestaurantTable, TableStatus } from "@/types/booking";
 import { useBookingCopy } from "@/content/bookingCopy";
 import { AREA_PHOTOS } from "@/content/areaPhotos";
-import { SiteHeader } from "@/components/SiteHeader";
 import { BookingSearch, type BookingSearchValue } from "@/components/BookingSearch";
 import { MAX_ONLINE_GUESTS, defaultEndFor, endSlotsFor, normaliseSearch, restaurantNow } from "@/lib/bookingSlots";
 import { cn } from "@/lib/utils";
@@ -373,8 +372,6 @@ export default function Booking() {
 
   return (
     <div className="min-h-screen bg-[#faf5ec] text-[#2b1d17]">
-      <SiteHeader />
-
       <section className="relative overflow-hidden bg-gradient-to-br from-[#5e2f25] via-[#7d3d2f] to-[#b5452f] text-white">
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-[#f6d9a8]/15 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 -left-16 h-72 w-72 rounded-full bg-[#2f9e5b]/15 blur-3xl" />
