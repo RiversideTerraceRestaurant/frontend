@@ -10,9 +10,26 @@ import { AREAS, adminBookingApi } from "@/lib/bookingApi";
 import type { Booking, RestaurantArea, RestaurantTable } from "@/types/booking";
 import { STATUS_STYLE, byTableNumber, isActive, toMinutes, toTime } from "@/features/time-map/timeMapUtils";
 import { cn } from "@/lib/utils";
+import { MAX_JOINED_SEATS, addError, selectionError, terraceSplitAllowed, type RuleError } from "@/lib/tableRules";
 
 const PLACEHOLDER_EMAIL = "timemap@riversideterrace.local";
 const PLACEHOLDER_PHONE = "0000000000";
+/** Staff-facing wording for the shared joining rules. */
+const RULE_TEXT: Record<RuleError, string> = {
+  bookingGuestInvalid: "Enter at least 1 guest.",
+  bookingLargeParty: `Joined tables seat at most ${MAX_JOINED_SEATS} guests.`,
+  bookingMaxTables: "At most 3 tables can be joined.",
+  bookingMaxCapacity: `Joined tables can seat at most ${MAX_JOINED_SEATS} guests.`,
+  bookingAdjacentOnly: "Only adjacent tables can be joined.",
+  bookingSameColumnOnly: "Tables can only be joined within the same column.",
+  bookingVeronaPairs: "V11–V12, V13–V14 and V15–V16 are fixed pairs.",
+  bookingVeronaMinimum: "Verona is for parties of 3 or more.",
+  bookingOneTableForTwo: "1–2 guests take one table. Raise the party size to join tables.",
+  bookingTooManyTables: "These tables already seat the party. Raise the party size to join more.",
+  bookingCapacityTooSmall: "Not enough seats yet: add an adjacent table in the same column.",
+  bookingTerraceFull: "The terrace is already split into 4 tables for 4 and 4 tables for 2 at this time.",
+};
+
 const TIME_OPTIONS: string[] = [];
 for (let minutes = 10 * 60; minutes <= 23 * 60 + 30; minutes += 30) TIME_OPTIONS.push(toTime(minutes));
 
@@ -60,7 +77,14 @@ export function BookingDialog({
     }
     return ids;
   }, [dayBookings, booking, form.date, form.startTime, form.endTime]);
-  const capacity = areaTables.filter((table) => form.tableIds.includes(table.id)).reduce((sum, table) => sum + table.capacity, 0);
+  const selectedTables = areaTables.filter((table) => form.tableIds.includes(table.id));
+  const capacity = selectedTables.reduce((sum, table) => sum + table.capacity, 0);
+  // Cancelled/rejected bookings hold no table, so the split limit only matters for live ones.
+  const holdsTables = !booking || isActive(booking);
+  const terraceFull = form.area === "TERRACE" && holdsTables && dayBookings.length > 0 && !terraceSplitAllowed(
+    dayBookings.filter((other) => other.bookingDate === form.date), form.startTime, form.endTime, Math.max(1, selectedTables.length), booking?.id,
+  );
+  const problem: RuleError | null = !form.tableIds.length ? null : selectionError(form.area, selectedTables, form.guests) ?? (terraceFull ? "bookingTerraceFull" : null);
 
   const run = async (label: string, action: () => Promise<Booking | void>, done: string) => {
     setBusy(label);
@@ -80,6 +104,8 @@ export function BookingDialog({
   const save = () => {
     if (!form.customerName.trim()) return toast({ title: "Customer name is required", variant: "destructive" });
     if (!form.tableIds.length) return toast({ title: "Choose at least one table", variant: "destructive" });
+    if (selectedTables.some((table) => taken.has(table.id))) return toast({ title: "A selected table is already booked at this time", variant: "destructive" });
+    if (problem) return toast({ title: "Check the tables", description: RULE_TEXT[problem], variant: "destructive" });
     if (form.endTime <= form.startTime) return toast({ title: "End time must be after start time", variant: "destructive" });
     const payload = {
       customerName: form.customerName.trim(),
@@ -105,12 +131,32 @@ export function BookingDialog({
     }
   };
 
-  const toggleTable = (id: number) => setForm((current) => {
-    const tableIds = current.tableIds.includes(id) ? current.tableIds.filter((value) => value !== id) : [...current.tableIds, id];
-    const seats = tables.filter((table) => tableIds.includes(table.id)).reduce((sum, table) => sum + table.capacity, 0);
-    // Suggest a party size that fits the chosen tables; staff can still change it.
-    return { ...current, tableIds, guests: tableIds.length > 1 || current.guests > seats ? Math.max(1, seats) : current.guests };
-  });
+  // The party size decides how many tables can be joined; choosing tables never changes it.
+  const toggleTable = (table: RestaurantTable) => {
+    if (form.tableIds.includes(table.id)) {
+      const remaining = selectedTables.filter((item) => item.id !== table.id);
+      if (remaining.length > 1 && selectionError(form.area, remaining, MAX_JOINED_SEATS) === "bookingAdjacentOnly") {
+        return toast({ title: "Remove a table from either end of the group", variant: "destructive" });
+      }
+      return setForm({ ...form, tableIds: remaining.map((item) => item.id) });
+    }
+    const reason = selectedTables.length ? addError(form.area, selectedTables, table, form.guests) : null;
+    if (!reason) return setForm({ ...form, tableIds: [...form.tableIds, table.id] });
+    // Start again from this table and say why it could not be joined.
+    setForm({ ...form, tableIds: [table.id] });
+    if (form.guests > 2) toast({ title: `Selection restarted from ${table.tableNumber}`, description: RULE_TEXT[reason] });
+  };
+  const setGuests = (guests: number) => {
+    const next = Math.min(MAX_JOINED_SEATS, Math.max(1, guests));
+    const issue = selectedTables.length ? selectionError(form.area, selectedTables, next) : null;
+    // Too many tables for the new party size: choose again.
+    setForm({ ...form, guests: next, tableIds: issue && issue !== "bookingCapacityTooSmall" ? [] : form.tableIds });
+  };
+  const joinable = new Set(
+    selectedTables.length && capacity < form.guests
+      ? areaTables.filter((table) => !form.tableIds.includes(table.id) && !taken.has(table.id) && !addError(form.area, selectedTables, table, form.guests)).map((table) => table.id)
+      : [],
+  );
 
   const status = booking?.status;
   const contactPhone = booking && booking.customerPhone !== PLACEHOLDER_PHONE ? booking.customerPhone : "";
@@ -216,7 +262,9 @@ export function BookingDialog({
               </div>
               <div>
                 <Label htmlFor="bd-guests">Guests</Label>
-                <Input id="bd-guests" type="number" min={1} max={200} className="mt-1 h-11" value={form.guests} onChange={(event) => setForm({ ...form, guests: Math.max(1, Number(event.target.value) || 1) })} />
+                <select id="bd-guests" className="mt-1 h-11 w-full rounded-md border bg-background px-2 text-sm" value={form.guests} onChange={(event) => setGuests(Number(event.target.value))}>
+                  {Array.from({ length: MAX_JOINED_SEATS }, (_, index) => index + 1).map((count) => <option key={count} value={count}>{count}</option>)}
+                </select>
               </div>
             </div>
           </section>
@@ -237,20 +285,24 @@ export function BookingDialog({
               {areaTables.map((table) => {
                 const selected = form.tableIds.includes(table.id);
                 const occupied = taken.has(table.id);
+                const canJoin = joinable.has(table.id);
                 return (
-                  <button key={table.id} type="button" onClick={() => toggleTable(table.id)}
+                  <button key={table.id} type="button" onClick={() => toggleTable(table)}
                     className={cn("relative rounded-xl border px-2 py-2 text-left transition",
-                      selected ? "border-[#713a2e] bg-[#713a2e] text-white shadow-sm" : occupied ? "border-red-200 bg-red-50 text-red-800" : "border-[#eadcc8] bg-white hover:border-[#c9a98c]")}
-                    title={occupied ? "Already booked at this time" : undefined}>
+                      selected ? "border-[#713a2e] bg-[#713a2e] text-white shadow-sm" : occupied ? "border-red-200 bg-red-50 text-red-800"
+                        : canJoin ? "border-2 border-dashed border-blue-400 bg-blue-50" : "border-[#eadcc8] bg-white hover:border-[#c9a98c]")}
+                    title={occupied ? "Already booked at this time" : canJoin ? "Can be joined" : undefined}>
                     <span className="block text-sm font-bold">{table.tableNumber}</span>
-                    <span className="block text-[10px] opacity-75">{occupied && !selected ? "busy" : `${table.capacity} seats`}</span>
+                    <span className="block text-[10px] opacity-75">{occupied && !selected ? "busy" : canJoin ? "join" : `${table.capacity} seats`}</span>
                   </button>
                 );
               })}
             </div>
-            <p className={cn("mt-2 flex items-center gap-1.5 text-xs", capacity && capacity < form.guests ? "text-red-600" : "text-[#7a5a4c]")}>
+            <p className={cn("mt-2 flex items-center gap-1.5 text-xs", problem ? "text-red-600" : "text-[#7a5a4c]")}>
               <Users className="h-3.5 w-3.5" />{form.tableIds.length} table(s) · {capacity} seats for {form.guests} guests
             </p>
+            {problem && <p className="mt-1 text-xs font-medium text-red-600">{RULE_TEXT[problem]}</p>}
+            <p className="mt-1 text-[11px] text-[#9a7b6c]">Change the guest count to join a different number of tables. Tables join only side by side in the same column (max 3 tables, {MAX_JOINED_SEATS} seats).</p>
           </section>
 
           <div>
@@ -261,7 +313,7 @@ export function BookingDialog({
 
         <div className="sticky bottom-0 flex justify-end gap-2 border-t bg-white/95 px-5 py-3 backdrop-blur">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
-          <Button className="bg-[#713a2e] hover:bg-[#5e2f25]" disabled={busy !== null} onClick={save}>
+          <Button className="bg-[#713a2e] hover:bg-[#5e2f25]" disabled={busy !== null || Boolean(problem)} onClick={save}>
             {busy === "save" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}{booking ? "Save changes" : "Create booking"}
           </Button>
         </div>

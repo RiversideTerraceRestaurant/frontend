@@ -833,6 +833,38 @@ Object.assign(copy.vi, {
   bookingVeronaPairs: "V11–V12, V13–V14 và V15–V16 là các cặp bàn cố định.",
 });
 
+// Party size drives table selection; joining rules and the terrace split limit.
+Object.assign(copy.en, {
+  bookingSameColumnOnly: "Tables can only be joined within the same column.",
+  bookingOneTableForTwo: "Parties of 1–2 guests can select only one table.",
+  bookingTooManyTables: "These tables already seat your party. To join more tables, increase the number of guests in the form first.",
+  bookingTerraceFull: "The terrace is already split into as many tables as it can hold at this time (4 tables for 4 and 4 tables for 2). Please choose another time or area.",
+  statusFull: "Terrace full",
+  bookingCannotSeatHere: "This table cannot be joined into enough adjacent seats in its column for your party.",
+  bookingNeedSeats: "{guests} guests · choose {tables} adjacent table(s) in one column",
+  bookingSeatsProgress: "{selected}/{guests} seats chosen",
+  bookingAddNeighbour: "Tap a highlighted table next to your selection to add it.",
+  bookingSelectionComplete: "Enough seats. To join more tables, change the number of guests.",
+  bookingSelectionReset: "Selection restarted from",
+  bookingGuestsChanged: "Party size changed, please choose your tables again.",
+  bookingJoinable: "Can join",
+});
+Object.assign(copy.vi, {
+  bookingSameColumnOnly: "Chỉ được ghép các bàn trên cùng một cột.",
+  bookingOneTableForTwo: "Nhóm 1–2 khách chỉ được chọn 1 bàn.",
+  bookingTooManyTables: "Số bàn đã chọn đã đủ chỗ cho nhóm. Muốn ghép thêm bàn, hãy tăng số khách trong form trước.",
+  bookingTerraceFull: "Terrace đã chia hết số bàn có thể vào giờ này (4 bàn 4 và 4 bàn 2). Vui lòng chọn giờ hoặc khu khác.",
+  statusFull: "Terrace kín",
+  bookingCannotSeatHere: "Bàn này không ghép được đủ chỗ (bàn kề nhau, cùng cột) cho số khách của bạn.",
+  bookingNeedSeats: "{guests} khách · chọn {tables} bàn kề nhau trên cùng một cột",
+  bookingSeatsProgress: "Đã chọn {selected}/{guests} chỗ",
+  bookingAddNeighbour: "Bấm vào bàn được viền sáng cạnh bàn đã chọn để ghép thêm.",
+  bookingSelectionComplete: "Đã đủ chỗ. Muốn ghép thêm bàn, hãy đổi số khách.",
+  bookingSelectionReset: "Đã chọn lại từ bàn",
+  bookingGuestsChanged: "Số khách đã đổi, vui lòng chọn lại bàn.",
+  bookingJoinable: "Ghép được",
+});
+
 // Navigation, hero search, booking flow and chat availability labels.
 Object.assign(copy.en, {
   navHome: "Home",

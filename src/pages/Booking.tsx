@@ -17,6 +17,7 @@ import { AREA_PHOTOS } from "@/content/areaPhotos";
 import { BookingSearch, type BookingSearchValue } from "@/components/BookingSearch";
 import { MAX_ONLINE_GUESTS, defaultEndFor, endSlotsFor, normaliseSearch, restaurantNow } from "@/lib/bookingSlots";
 import { cn } from "@/lib/utils";
+import { FIRST_COLUMN_LAST, addError, canSeatFrom, selectionError, tableNumber, terraceTablesFor, type RuleError } from "@/lib/tableRules";
 import { useTablePhotos } from "@/components/TablePhotoViewer";
 
 const statusColor: Record<TableStatus, string> = {
@@ -25,6 +26,7 @@ const statusColor: Record<TableStatus, string> = {
   RESERVED: "#d64545",
   OCCUPIED: "#8a4b2d",
   MAINTENANCE: "#9aa0a6",
+  FULL: "#b07a5a",
 };
 const SELECTED_COLOR = "#2563eb";
 
@@ -34,7 +36,9 @@ const statusLabelKey: Record<TableStatus, string> = {
   RESERVED: "statusReserved",
   OCCUPIED: "statusOccupied",
   MAINTENANCE: "statusMaintenance",
+  FULL: "statusFull",
 };
+const fill = (text: string, values: Record<string, string | number>) => text.replace(/\{(\w+)\}/g, (match, key: string) => (key in values ? String(values[key]) : match));
 
 type Seating = "any" | "outside" | "inside";
 const isArea = (value: string | null): value is RestaurantArea => AREAS.some((item) => item.value === value);
@@ -88,13 +92,25 @@ export default function Booking() {
   const selectedCapacity = selectedTables.reduce((total, table) => total + table.capacity, 0);
   const guestCount = Number(form.numberOfGuests) || 0;
   const availableCount = displayTables.filter((table) => table.status === "AVAILABLE").length;
+  const freeTables = displayTables.filter((table) => table.status === "AVAILABLE");
+  const terraceFull = area === "TERRACE" && displayTables.some((table) => table.status === "FULL");
+  const selectionProblem: RuleError | null = selectedTables.length ? selectionError(area, selectedTables, guestCount) : null;
+  const selectionComplete = selectedTables.length > 0 && !selectionProblem;
+  /** Tables that can seat (part of) this party; the rest are dimmed on the map. */
+  const seatable = useMemo(
+    () => new Set(freeTables.filter((table) => canSeatFrom(area, table, freeTables, guestCount)).map((table) => table.id)),
+    [area, guestCount, freeTables.map((table) => table.id).join(",")], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  /** Tables that would extend the current, still too small, selection. */
+  const joinable = new Set(
+    selectedTables.length && selectedCapacity < guestCount
+      ? freeTables.filter((table) => !selectedTableIds.includes(table.id) && !addError(area, selectedTables, table, guestCount)).map((table) => table.id)
+      : [],
+  );
 
   // ---- floor plan geometry (RTR layout) ----
-  const columnTableLayout = {
-    TERRACE: { prefix: "T", leftMax: 6, rightMax: 12 },
-    VERONA: { prefix: "V", leftMax: 10, rightMax: 16 },
-    SORRENTO: { prefix: "S", leftMax: 4, rightMax: 6 },
-  }[area as "TERRACE" | "VERONA" | "SORRENTO"];
+  // Two columns per area, split where the joining rules split them (tables join only within a column).
+  const columnTableLayout = { prefix: area.charAt(0), leftMax: FIRST_COLUMN_LAST[area], rightMax: Number.MAX_SAFE_INTEGER };
   const useColumnTableLayout = Boolean(columnTableLayout);
   const tableNumberIndex = (table: RestaurantTable) => {
     if (!columnTableLayout) return Number.POSITIVE_INFINITY;
@@ -146,6 +162,14 @@ export default function Booking() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when the search inputs change
   }, [area, form.bookingDate, form.startTime, form.endTime]);
 
+  const guestsLoadedRef = useRef(form.numberOfGuests);
+  useEffect(() => {
+    if (guestsLoadedRef.current === form.numberOfGuests) return;
+    guestsLoadedRef.current = form.numberOfGuests;
+    void loadTables();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- availability depends on the party size (terrace split limit)
+  }, [form.numberOfGuests]);
+
   useEffect(() => {
     const element = canvasContainerRef.current;
     if (!element) return;
@@ -185,10 +209,16 @@ export default function Booking() {
       });
       if (requestId !== tablesRequestIdRef.current) return;
       setTables(data);
+      const free = (id: number) => data.some((table) => table.id === id && table.status === "AVAILABLE");
       if (pendingSuggestedIdsRef.current) {
-        const wanted = pendingSuggestedIdsRef.current;
-        setSelectedTableIds(wanted.filter((id) => data.some((table) => table.id === id && table.status === "AVAILABLE")));
+        const wanted = pendingSuggestedIdsRef.current.filter(free);
+        const wantedTables = data.filter((table) => wanted.includes(table.id));
+        // Only keep a preset (chat link, suggestion) that is valid for the party size.
+        setSelectedTableIds(wantedTables.length && !selectionError(area, wantedTables, Number(form.numberOfGuests) || 1) ? wanted : []);
         pendingSuggestedIdsRef.current = null;
+      } else {
+        // Tables taken by someone else in the meantime drop out of the selection.
+        setSelectedTableIds((current) => current.filter(free));
       }
     } catch (error) {
       if (requestId !== tablesRequestIdRef.current) return;
@@ -204,6 +234,7 @@ export default function Booking() {
     const next = normaliseSearch(search.date, search.time);
     const endTime = form.startTime === next.time ? form.endTime : defaultEndFor(next.time);
     setForm((current) => ({ ...current, bookingDate: next.date, startTime: next.time, endTime, numberOfGuests: String(search.guests) }));
+    setSelectedTableIds([]);
     setParams((current) => {
       const updated = new URLSearchParams(current);
       updated.set("date", next.date);
@@ -248,11 +279,12 @@ export default function Booking() {
     const now = restaurantNow();
     if (form.bookingDate < now.date || (form.bookingDate === now.date && form.startTime <= now.time)) return t("bookingPastTime");
     if (form.endTime <= form.startTime) return t("bookingEndAfterStart");
+    if (area === "VERONA" && guestCount < 3) return t("bookingVeronaMinimum");
+    if (terraceFull) return t("bookingTerraceFull");
     if (selectedTables.length === 0) return t("bookingChooseTables");
     if (selectedTables.some((table) => table.status !== "AVAILABLE")) return t("bookingUnavailableSelected");
     if (selectedTables.some((table) => table.area !== area)) return t("bookingWrongAreaSelected");
-    if (selectedCapacity < guestCount) return t("bookingCapacityTooSmall");
-    if (area === "VERONA" && guestCount < 3) return t("bookingVeronaMinimum");
+    if (selectionProblem) return t(selectionProblem);
     return "";
   };
 
@@ -262,37 +294,45 @@ export default function Booking() {
     const now = Date.now();
     if (lastToggleRef.current.id === table.id && now - lastToggleRef.current.at < 450) return;
     lastToggleRef.current = { id: table.id, at: now };
-    if (table.status !== "AVAILABLE") return;
     const warn = (description: string) => toast({ title: t("bookingFormIncomplete"), description, variant: "destructive" });
-    const numbersOf = (list: RestaurantTable[]) => list.map((item) => Number(item.tableNumber.replace(/\D/g, ""))).sort((a, b) => a - b);
+    if (table.status === "FULL") return warn(t("bookingTerraceFull"));
+    if (table.status !== "AVAILABLE") return;
+    if (guestCount > MAX_ONLINE_GUESTS) return warn(t("bookingLargeParty"));
+    if (area === "VERONA" && guestCount <= 2) return warn(t("bookingVeronaMinimum"));
+    const numbersOf = (list: RestaurantTable[]) => list.map(tableNumber).sort((a, b) => a - b);
     const adjacent = (numbers: number[]) => numbers.every((number, index) => index === 0 || number === numbers[index - 1] + 1);
-    const apply = (next: RestaurantTable[]) => {
-      setSelectedTableIds(next.map((item) => item.id));
-      // Seat as many guests as the chosen tables hold (max 6 online); keep a smaller party on one table.
-      const capacity = next.reduce((total, item) => total + item.capacity, 0);
-      if (next.length && (next.length > 1 || guestCount > capacity)) {
-        setForm((current) => ({ ...current, numberOfGuests: String(Math.min(capacity, MAX_ONLINE_GUESTS)) }));
-      }
-    };
 
+    // The party size in the form decides how many tables may be chosen; selecting never changes it.
     if (selectedTableIds.includes(table.id)) {
       const remaining = selectedTables.filter((item) => item.id !== table.id);
       if (!adjacent(numbersOf(remaining))) return warn(t("bookingRemoveFromEnd"));
-      apply(remaining);
+      setSelectedTableIds(remaining.map((item) => item.id));
       return;
     }
-    const nextTables = [...selectedTables, table];
-    const numbers = numbersOf(nextTables);
-    // Tapping a table away from the current group starts a new selection.
-    if (!adjacent(numbers)) return apply([table]);
-    if (nextTables.length > 3) return warn(t("bookingMaxTables"));
-    if (nextTables.reduce((total, item) => total + item.capacity, 0) > 6) return warn(t("bookingMaxCapacity"));
-    if (area === "TERRACE" && numbers.includes(6) && numbers.includes(7)) return warn(t("bookingNoJoinT6T7"));
-    if (area === "VERONA" && numbers.some((number) => number >= 11)) {
-      const fixedPairs = [[11, 12], [13, 14], [15, 16]];
-      if (!fixedPairs.some((pair) => numbers.every((number) => pair.includes(number))) || nextTables.length > 2) return warn(t("bookingVeronaPairs"));
+    if (!seatable.has(table.id)) return warn(t("bookingCannotSeatHere"));
+    if (!selectedTables.length) return setSelectedTableIds([table.id]);
+    const reason = addError(area, selectedTables, table, guestCount);
+    if (!reason) return setSelectedTableIds([...selectedTableIds, table.id]);
+    // One table seats a couple: tapping another table simply moves the selection.
+    if (guestCount <= 2) return setSelectedTableIds([table.id]);
+    // The group already seats everyone, or the table cannot join it: start again from this table.
+    setSelectedTableIds([table.id]);
+    toast({ title: `${t("bookingSelectionReset")} ${table.tableNumber}`, description: t(reason) });
+  };
+
+  const setGuests = (value: number) => {
+    setForm((current) => ({ ...current, numberOfGuests: String(value) }));
+    setParams((current) => {
+      const updated = new URLSearchParams(current);
+      updated.set("guests", String(value));
+      return updated;
+    }, { replace: true });
+    // Keep a selection that is still valid or just needs more tables; otherwise choose again.
+    const problem = selectedTables.length ? selectionError(area, selectedTables, value) : null;
+    if (problem && problem !== "bookingCapacityTooSmall") {
+      setSelectedTableIds([]);
+      toast({ title: t("bookingGuestsChanged"), description: t(problem) });
     }
-    apply(nextTables);
   };
 
   const submitBooking = async (event: FormEvent) => {
@@ -325,7 +365,7 @@ export default function Booking() {
       setOtp("");
       toast({ title: t("bookingOtpSent"), description: t("bookingOtpSentDescription") });
     } catch (error) {
-      if (error instanceof ApiError && error.code === "TABLE_NOT_AVAILABLE") await loadTables();
+      if (error instanceof ApiError && (error.code === "TABLE_NOT_AVAILABLE" || error.code === "TERRACE_SPLIT_LIMIT")) await loadTables();
       toast({ title: t("bookingCannotRequestOtp"), description: error instanceof Error ? error.message : t("bookingTryAnotherTable"), variant: "destructive" });
     } finally {
       setSubmitting(false);
@@ -342,7 +382,7 @@ export default function Booking() {
       if (booking.warning) toast({ title: t("bookingSuccessTitle"), description: booking.warning });
       await loadTables();
     } catch (error) {
-      if (error instanceof ApiError && error.code === "TABLE_NOT_AVAILABLE") await loadTables();
+      if (error instanceof ApiError && (error.code === "TABLE_NOT_AVAILABLE" || error.code === "TERRACE_SPLIT_LIMIT")) await loadTables();
       toast({ title: t("bookingOtpFailed"), description: error instanceof Error ? error.message : t("bookingTryAgain"), variant: "destructive" });
     } finally {
       setSubmitting(false);
@@ -446,6 +486,26 @@ export default function Booking() {
               ))}
             </div>
 
+            <div
+              role="status"
+              className={cn(
+                "mb-3 rounded-2xl border px-3 py-2 text-sm",
+                terraceFull || (selectionProblem && selectionProblem !== "bookingCapacityTooSmall") ? "border-red-200 bg-red-50 text-red-800"
+                  : selectionComplete ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-[#eadcc8] bg-[#fdf9f3] text-[#5b3a2e]",
+              )}
+            >
+              <p className="font-semibold">
+                {fill(t("bookingNeedSeats"), { guests: guestCount, tables: area === "TERRACE" ? terraceTablesFor(guestCount) : guestCount <= 2 ? 1 : `1–${Math.min(3, Math.ceil(guestCount / 2))}` })}
+              </p>
+              <p className="mt-0.5 text-xs opacity-90">
+                {terraceFull ? t("bookingTerraceFull")
+                  : selectionProblem && selectionProblem !== "bookingCapacityTooSmall" ? t(selectionProblem)
+                  : selectionComplete ? `${fill(t("bookingSeatsProgress"), { selected: selectedCapacity, guests: guestCount })} · ${t("bookingSelectionComplete")}`
+                  : selectedTables.length ? `${fill(t("bookingSeatsProgress"), { selected: selectedCapacity, guests: guestCount })} · ${t("bookingAddNeighbour")}`
+                  : t("bookingChooseTables")}
+              </p>
+            </div>
+
             <div className="relative w-full min-w-0 overflow-hidden rounded-2xl border border-[#f0e4d4] bg-[#fdf9f3]">
               <div ref={canvasContainerRef} className="table-map-touch block w-full min-w-0 overflow-hidden">
                 <Stage preventDefault={false} width={stageWidth} height={stageHeight} scaleX={stageScale} scaleY={stageScale}>
@@ -454,6 +514,8 @@ export default function Booking() {
                     {canvasTables.map((table) => {
                       const selected = selectedTableIds.includes(table.id);
                       const disabled = table.status !== "AVAILABLE";
+                      const unseatable = !disabled && !selected && !seatable.has(table.id);
+                      const canJoin = joinable.has(table.id);
                       const { x, y } = getTablePosition(table);
                       return (
                         <Rect
@@ -465,9 +527,10 @@ export default function Booking() {
                           height={tableHeight}
                           cornerRadius={16}
                           fill={selected ? SELECTED_COLOR : statusColor[table.status]}
-                          opacity={disabled ? 0.45 : 1}
-                          stroke={selected ? "#1e40af" : "#ffffff"}
-                          strokeWidth={selected ? 5 : 2}
+                          opacity={disabled ? 0.45 : unseatable ? 0.3 : 1}
+                          stroke={selected ? "#1e40af" : canJoin ? "#60a5fa" : "#ffffff"}
+                          strokeWidth={selected ? 5 : canJoin ? 5 : 2}
+                          dash={canJoin ? [10, 6] : undefined}
                           shadowColor="rgba(60, 30, 20, 0.18)"
                           shadowBlur={selected ? 14 : 6}
                           shadowOffsetY={3}
@@ -489,7 +552,7 @@ export default function Booking() {
                           align="center"
                           fill="#ffffff"
                           listening={false}
-                          text={`${table.tableNumber}\n${table.capacity} ${t("bookingGuestLabel")}${disabled ? ` · ${t(statusLabelKey[table.status])}` : ""}`}
+                          text={`${table.tableNumber}\n${table.capacity} ${t("bookingGuestLabel")}${disabled ? ` · ${t(statusLabelKey[table.status])}` : joinable.has(table.id) ? ` · ${t("bookingJoinable")}` : ""}`}
                           fontStyle="bold"
                           fontSize={17}
                           lineHeight={1.3}
@@ -512,7 +575,7 @@ export default function Booking() {
             </div>
 
             <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-[#6b5146]">
-              {(["AVAILABLE", "HOLD", "RESERVED"] as TableStatus[]).map((status) => (
+              {(["AVAILABLE", "HOLD", "RESERVED", ...(terraceFull ? ["FULL"] : [])] as TableStatus[]).map((status) => (
                 <span key={status} className="inline-flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: statusColor[status] }} />
                   {t(statusLabelKey[status])}
@@ -558,7 +621,8 @@ export default function Booking() {
             <div className={cn("mb-4 rounded-2xl border px-4 py-3 text-sm", selectedTables.length ? "border-blue-200 bg-blue-50 text-blue-900" : "border-dashed border-[#e2cdb4] bg-[#fdf9f3] text-[#7a5a4c]")}>
               <p className="font-semibold">{selectionLabel}</p>
               <p className="mt-0.5 text-xs opacity-80">{AREAS.find((item) => item.value === area)?.label} · {form.bookingDate} · {form.startTime}–{form.endTime} · {guestCount} {t("bookingGuestLabel")}</p>
-              {selectedTables.length > 0 && selectedCapacity < guestCount && <p className="mt-1 text-xs font-medium text-red-600">{t("bookingNotEnoughSeats")}</p>}
+              {selectionProblem && <p className="mt-1 text-xs font-medium text-red-600">{selectionProblem === "bookingCapacityTooSmall" ? t("bookingNotEnoughSeats") : t(selectionProblem)}</p>}
+              {terraceFull && <p className="mt-1 text-xs font-medium text-red-600">{t("bookingTerraceFull")}</p>}
             </div>
 
             <div className="grid gap-3.5">
@@ -567,16 +631,29 @@ export default function Booking() {
                 <Field label={t("bookingEmail")} id="customerEmail" type="email" autoComplete="email" inputMode="email" placeholder="name@example.com" value={form.customerEmail} onChange={(value) => setForm({ ...form, customerEmail: value })} />
                 <Field label={t("bookingPhone")} id="customerPhone" type="tel" autoComplete="tel" inputMode="tel" placeholder="0912 345 678" value={form.customerPhone} onChange={(value) => setForm({ ...form, customerPhone: value })} />
               </div>
-              <div>
-                <Label htmlFor="endTime">{t("bookingEndTime")}</Label>
-                <select
-                  id="endTime"
-                  value={form.endTime}
-                  onChange={(event) => setForm({ ...form, endTime: event.target.value })}
-                  className="mt-1.5 h-12 w-full rounded-xl border border-input bg-background px-3 text-base"
-                >
-                  {endSlotsFor(form.startTime).map((slot) => <option key={slot} value={slot}>{slot}</option>)}
-                </select>
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <Label htmlFor="numberOfGuests">{t("bookingGuests")} <RequiredMark /></Label>
+                  <select
+                    id="numberOfGuests"
+                    value={String(Math.min(Math.max(guestCount, 1), MAX_ONLINE_GUESTS))}
+                    onChange={(event) => setGuests(Number(event.target.value))}
+                    className="mt-1.5 h-12 w-full rounded-xl border border-input bg-background px-3 text-base"
+                  >
+                    {Array.from({ length: MAX_ONLINE_GUESTS }, (_, index) => index + 1).map((count) => <option key={count} value={count}>{count}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="endTime">{t("bookingEndTime")}</Label>
+                  <select
+                    id="endTime"
+                    value={form.endTime}
+                    onChange={(event) => setForm({ ...form, endTime: event.target.value })}
+                    className="mt-1.5 h-12 w-full rounded-xl border border-input bg-background px-3 text-base"
+                  >
+                    {endSlotsFor(form.startTime).map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+                  </select>
+                </div>
               </div>
               <div>
                 <Label htmlFor="note">{t("bookingNotes")}</Label>
@@ -600,7 +677,7 @@ export default function Booking() {
                   {t("bookingConfirmationLabel")} <RequiredMark />
                 </Label>
               </div>
-              <Button type="submit" disabled={submitting || selectedTables.length === 0} className="h-12 rounded-2xl bg-[#c0392b] text-base font-semibold text-white shadow-lg shadow-[#c0392b]/25 hover:bg-[#a93226]">
+              <Button type="submit" disabled={submitting || !selectionComplete || terraceFull} className="h-12 rounded-2xl bg-[#c0392b] text-base font-semibold text-white shadow-lg shadow-[#c0392b]/25 hover:bg-[#a93226]">
                 {submitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CalendarCheck className="mr-2 h-5 w-5" />}
                 {t("bookingContinue")}
               </Button>

@@ -1,6 +1,7 @@
 export type RestaurantArea = "TERRACE" | "ROMA" | "VERONA" | "SORRENTO";
 
-export type TableStatus = "AVAILABLE" | "HOLD" | "RESERVED" | "OCCUPIED" | "MAINTENANCE";
+/** FULL: the terrace is already split into as many tables as it can hold at that time (availability only). */
+export type TableStatus = "AVAILABLE" | "HOLD" | "RESERVED" | "OCCUPIED" | "MAINTENANCE" | "FULL";
 
 export type BookingStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "COMPLETED";
 
