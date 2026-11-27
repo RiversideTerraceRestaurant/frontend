@@ -13,13 +13,8 @@ const toTime = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart
 export const START_SLOTS: string[] = [];
 for (let minutes = toMinutes(FIRST_SLOT); minutes <= toMinutes(LAST_SLOT); minutes += 30) START_SLOTS.push(toTime(minutes));
 
-/** End-time choices for a start: 1 to 4 hours later, never past 23:30. */
-export function endSlotsFor(start: string) {
-  const slots: string[] = [];
-  for (let minutes = toMinutes(start) + 60; minutes <= Math.min(toMinutes(start) + 240, 23 * 60 + 30); minutes += 30) slots.push(toTime(minutes));
-  return slots;
-}
-export const defaultEndFor = (start: string) => toTime(Math.min(toMinutes(start) + DURATION_MINUTES, 23 * 60 + 30));
+/** Every booking lasts exactly 2 hours from its start; only the start can be chosen (the backend enforces it too). */
+export const endTimeFor = (start: string) => toTime(toMinutes(start) + DURATION_MINUTES);
 
 export function addDays(date: string, days: number) {
   const value = new Date(`${date}T00:00:00Z`);

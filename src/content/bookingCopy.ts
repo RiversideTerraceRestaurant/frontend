@@ -848,6 +848,8 @@ Object.assign(copy.en, {
   bookingSelectionReset: "Selection restarted from",
   bookingGuestsChanged: "Party size changed, please choose your tables again.",
   bookingJoinable: "Can join",
+  bookingStartTime: "Arrival time",
+  bookingSeatedUntil: "Your table is held for 2 hours, until {end}.",
 });
 Object.assign(copy.vi, {
   bookingSameColumnOnly: "Chỉ được ghép các bàn trên cùng một cột.",
@@ -863,6 +865,8 @@ Object.assign(copy.vi, {
   bookingSelectionReset: "Đã chọn lại từ bàn",
   bookingGuestsChanged: "Số khách đã đổi, vui lòng chọn lại bàn.",
   bookingJoinable: "Ghép được",
+  bookingStartTime: "Giờ đến",
+  bookingSeatedUntil: "Bàn được giữ 2 tiếng, đến {end}.",
 });
 
 // Navigation, hero search, booking flow and chat availability labels.

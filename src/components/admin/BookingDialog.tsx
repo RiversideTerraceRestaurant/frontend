@@ -10,6 +10,7 @@ import { AREAS, adminBookingApi } from "@/lib/bookingApi";
 import type { Booking, RestaurantArea, RestaurantTable } from "@/types/booking";
 import { STATUS_STYLE, byTableNumber, isActive, toMinutes, toTime } from "@/features/time-map/timeMapUtils";
 import { cn } from "@/lib/utils";
+import { DURATION_MINUTES } from "@/lib/bookingSlots";
 import { MAX_JOINED_SEATS, addError, selectionError, terraceSplitAllowed, type RuleError } from "@/lib/tableRules";
 
 const PLACEHOLDER_EMAIL = "timemap@riversideterrace.local";
@@ -30,8 +31,10 @@ const RULE_TEXT: Record<RuleError, string> = {
   bookingTerraceFull: "The terrace is already split into 4 tables for 4 and 4 tables for 2 at this time.",
 };
 
+/** Start times; every booking lasts exactly 2 hours, so the last start is 21:30. */
 const TIME_OPTIONS: string[] = [];
-for (let minutes = 10 * 60; minutes <= 23 * 60 + 30; minutes += 30) TIME_OPTIONS.push(toTime(minutes));
+for (let minutes = 10 * 60; minutes <= 21 * 60 + 30; minutes += 30) TIME_OPTIONS.push(toTime(minutes));
+const endFor = (start: string) => toTime(toMinutes(start) + DURATION_MINUTES);
 
 export interface BookingDraft { date: string; area: RestaurantArea; tableIds: number[]; startTime: string }
 
@@ -106,7 +109,7 @@ export function BookingDialog({
     if (!form.tableIds.length) return toast({ title: "Choose at least one table", variant: "destructive" });
     if (selectedTables.some((table) => taken.has(table.id))) return toast({ title: "A selected table is already booked at this time", variant: "destructive" });
     if (problem) return toast({ title: "Check the tables", description: RULE_TEXT[problem], variant: "destructive" });
-    if (form.endTime <= form.startTime) return toast({ title: "End time must be after start time", variant: "destructive" });
+    if (form.startTime > TIME_OPTIONS[TIME_OPTIONS.length - 1]) return toast({ title: `The latest start time is ${TIME_OPTIONS[TIME_OPTIONS.length - 1]}`, description: "Bookings last 2 hours.", variant: "destructive" });
     const payload = {
       customerName: form.customerName.trim(),
       customerEmail: form.customerEmail.trim(),
@@ -247,18 +250,13 @@ export function BookingDialog({
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <Label htmlFor="bd-start">From</Label>
-                <select id="bd-start" className="mt-1 h-11 w-full rounded-md border bg-background px-2 text-sm" value={form.startTime} onChange={(event) => {
-                  const startTime = event.target.value;
-                  setForm({ ...form, startTime, endTime: toMinutes(form.endTime) > toMinutes(startTime) ? form.endTime : toTime(Math.min(toMinutes(startTime) + 120, 23 * 60 + 30)) });
-                }}>
-                  {TIME_OPTIONS.map((time) => <option key={time}>{time}</option>)}
+                <select id="bd-start" className="mt-1 h-11 w-full rounded-md border bg-background px-2 text-sm" value={form.startTime} onChange={(event) => setForm({ ...form, startTime: event.target.value, endTime: endFor(event.target.value) })}>
+                  {(TIME_OPTIONS.includes(form.startTime) ? TIME_OPTIONS : [form.startTime, ...TIME_OPTIONS]).map((time) => <option key={time}>{time}</option>)}
                 </select>
               </div>
               <div>
-                <Label htmlFor="bd-end">To</Label>
-                <select id="bd-end" className="mt-1 h-11 w-full rounded-md border bg-background px-2 text-sm" value={form.endTime} onChange={(event) => setForm({ ...form, endTime: event.target.value })}>
-                  {TIME_OPTIONS.filter((time) => time > form.startTime).map((time) => <option key={time}>{time}</option>)}
-                </select>
+                <Label htmlFor="bd-end">To · 2h</Label>
+                <div id="bd-end" className="mt-1 flex h-11 items-center rounded-md border bg-muted/40 px-2 text-sm text-muted-foreground" title="Bookings last 2 hours from the start time">{form.endTime}</div>
               </div>
               <div>
                 <Label htmlFor="bd-guests">Guests</Label>
@@ -331,7 +329,7 @@ function formFrom(booking: Booking | null, draft?: BookingDraft) {
       guests: booking.numberOfGuests,
       date: booking.bookingDate,
       startTime: booking.startTime,
-      endTime: booking.endTime,
+      endTime: endFor(booking.startTime),
       area: booking.area,
       tableIds: booking.tables.map((table) => table.id),
       note: booking.note ?? "",
@@ -341,7 +339,7 @@ function formFrom(booking: Booking | null, draft?: BookingDraft) {
   return {
     customerName: "", customerPhone: "", customerEmail: "", guests: 2,
     date: draft?.date ?? new Date().toISOString().slice(0, 10),
-    startTime: start, endTime: toTime(Math.min(toMinutes(start) + 120, 23 * 60 + 30)),
+    startTime: TIME_OPTIONS.includes(start) ? start : TIME_OPTIONS[TIME_OPTIONS.length - 1], endTime: endFor(TIME_OPTIONS.includes(start) ? start : TIME_OPTIONS[TIME_OPTIONS.length - 1]),
     area: draft?.area ?? ("TERRACE" as RestaurantArea), tableIds: draft?.tableIds ?? [], note: "",
   };
 }

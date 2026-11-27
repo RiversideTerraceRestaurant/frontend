@@ -15,7 +15,7 @@ import { Booking as BookingResult, RequestOtpResponse, RestaurantArea, Restauran
 import { useBookingCopy } from "@/content/bookingCopy";
 import { AREA_PHOTOS } from "@/content/areaPhotos";
 import { BookingSearch, type BookingSearchValue } from "@/components/BookingSearch";
-import { MAX_ONLINE_GUESTS, defaultEndFor, endSlotsFor, normaliseSearch, restaurantNow } from "@/lib/bookingSlots";
+import { MAX_ONLINE_GUESTS, endTimeFor, normaliseSearch, restaurantNow, slotsOn } from "@/lib/bookingSlots";
 import { cn } from "@/lib/utils";
 import { FIRST_COLUMN_LAST, addError, canSeatFrom, selectionError, tableNumber, terraceTablesFor, type RuleError } from "@/lib/tableRules";
 import { useTablePhotos } from "@/components/TablePhotoViewer";
@@ -79,7 +79,7 @@ export default function Booking() {
     numberOfGuests: String(initialGuests),
     bookingDate: initialSearch.date,
     startTime: initialSearch.time,
-    endTime: defaultEndFor(initialSearch.time),
+    endTime: endTimeFor(initialSearch.time),
     note: "",
   });
   // The requested slot was in the past and has been moved forward.
@@ -232,7 +232,7 @@ export default function Booking() {
   /** Search button: apply the date/time/party size and pick the best tables for the chosen seating. */
   const findBest = async (search: BookingSearchValue, seatingChoice: Seating = seating) => {
     const next = normaliseSearch(search.date, search.time);
-    const endTime = form.startTime === next.time ? form.endTime : defaultEndFor(next.time);
+    const endTime = endTimeFor(next.time);
     setForm((current) => ({ ...current, bookingDate: next.date, startTime: next.time, endTime, numberOfGuests: String(search.guests) }));
     setSelectedTableIds([]);
     setParams((current) => {
@@ -318,6 +318,16 @@ export default function Booking() {
     // The group already seats everyone, or the table cannot join it: start again from this table.
     setSelectedTableIds([table.id]);
     toast({ title: `${t("bookingSelectionReset")} ${table.tableNumber}`, description: t(reason) });
+  };
+
+  /** Only the start can change; the table is held for 2 hours from it. */
+  const setStartTime = (value: string) => {
+    setForm((current) => ({ ...current, startTime: value, endTime: endTimeFor(value) }));
+    setParams((current) => {
+      const updated = new URLSearchParams(current);
+      updated.set("time", value);
+      return updated;
+    }, { replace: true });
   };
 
   const setGuests = (value: number) => {
@@ -644,17 +654,20 @@ export default function Booking() {
                   </select>
                 </div>
                 <div>
-                  <Label htmlFor="endTime">{t("bookingEndTime")}</Label>
+                  <Label htmlFor="startTime">{t("bookingStartTime")} <RequiredMark /></Label>
                   <select
-                    id="endTime"
-                    value={form.endTime}
-                    onChange={(event) => setForm({ ...form, endTime: event.target.value })}
+                    id="startTime"
+                    value={form.startTime}
+                    onChange={(event) => setStartTime(event.target.value)}
                     className="mt-1.5 h-12 w-full rounded-xl border border-input bg-background px-3 text-base"
                   >
-                    {endSlotsFor(form.startTime).map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+                    {(slotsOn(form.bookingDate).includes(form.startTime) ? slotsOn(form.bookingDate) : [form.startTime, ...slotsOn(form.bookingDate)]).map((slot) => <option key={slot} value={slot}>{slot}</option>)}
                   </select>
                 </div>
               </div>
+              <p className="-mt-1.5 flex items-center gap-1.5 text-xs text-[#7a5a4c]">
+                <Clock className="h-3.5 w-3.5 shrink-0" />{t("bookingSeatedUntil").replace("{end}", form.endTime)}
+              </p>
               <div>
                 <Label htmlFor="note">{t("bookingNotes")}</Label>
                 <Textarea className="mt-1.5 rounded-xl text-base" id="note" value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} placeholder={t("bookingOptional")} />
